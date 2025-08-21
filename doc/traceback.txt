@@ -1,0 +1,26 @@
+*traceback.nvim*        Time-machine buffer snapshots with lenses
+
+USAGE                                                        *traceback-usage*
+
+:TracebackTimeline           Open Telescope timeline picker
+:TracebackCapture            Force capture snapshot
+:TracebackRestore {idx}      Restore snapshot by index
+:TracebackReplay a b [ms]    Replay snapshots from a to b
+:TracebackLenses             Render lenses now
+:TracebackLensesToggle {code|debug|security}
+
+CONFIG                                                       *traceback-config*
+
+>lua
+require('traceback').setup({
+  snapshot = { max_snapshots = 200, throttle_ms = 500 },
+  lenses = { code = true, debug = true, security = true, auto_render = true, max_annotations = 200, scan_window = 400, treesitter = true },
+  telescope = true,
+})
+<
+
+NOTES                                                        *traceback-notes*
+- Snapshots are in-memory and per-buffer.
+- Lenses are heuristic; Security lens is not a full static analyzer.
+ 
+
