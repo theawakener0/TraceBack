@@ -1,17 +1,32 @@
 # traceback.nvim
 
-Time-machine for your current buffer: capture snapshots as you edit (not git), browse a timeline, replay edits, and restore any point. Comes with multiple lenses: Code, Debug, and Security.
+TraceBack is a fast, privacy-first time machine for your current buffer, capture lightweight, throttled snapshots as you edit (no git commits), browse a visual timeline, replay edits as an animation, and restore any point instantly. It was built to stop security and quality from being an afterthought in today’s rapid, AI-driven workflows by surfacing issues early with rich, contextual lenses.
+
+Why use it?
+- Instant safety net: recover from mistakes or experiments without touching your VCS.
+- Security-first: the Security Lens highlights high‑entropy secrets, insecure patterns, and common CWE-class issues so you can fix problems before they escape the editor.
+- Actionable insights: Code and Debug lenses reveal complexity hotspots, diagnostics, and quick fixes — plus contextual suggestions to refactor or harden code.
+- Low friction: in-memory snapshots, Telescope timeline browser, configurable keymaps, and minimal performance overhead.
+
+Install, open the timeline, and let TraceBack keep your edits safe, your code cleaner, and security visible while you code.
 
 ## Features
-- ⚡ Automatic throttled snapshots on changes
-- 🔄 Ring buffer of snapshots (default 200)
-- 🔭 Telescope picker to browse timeline with preview
-- ▶️ Replay snapshots as animation
+
+- ⚡ Configurable, throttled automatic snapshots on buffer changes (default throttle_ms = 500)  
+- 🔄 Per-buffer ring buffer of snapshots with instant restore (default max_snapshots = 200)  
+- 🔭 Timeline browser (Telescope) with live preview and snapshot counts  
+- ▶️ Replay snapshots as animated diffs with adjustable delay  
+- 🧩 Language support: C, C++, Python, Lua, JavaScript, Go (Treesitter-aware)  
 - 🔍 Lenses with rich visual indicators:
-  - 💡 Code Lens: inline complexity/structure hints with color-coded indicators
-  - 🐛 Debug Lens: highlight error/log patterns and summarize LSP diagnostics
-  - 🔒 Security Lens: flag common insecure patterns
-  - Uses Treesitter when available for more accurate function detection and to ignore matches inside strings/comments.
+  - 💡 Code Lens — inline complexity and structure hints (color-coded)
+  - 🐛 Debug Lens — highlights error/log patterns and summarizes LSP diagnostics
+  - 🔒 Security Lens — flags common insecure patterns and high-entropy secrets
+- 🌲 Treesitter integration when available for more accurate function detection and to ignore matches inside strings/comments  
+- ⚙️ Lightweight, in-memory snapshots (no VCS commits), minimal performance overhead, and fully configurable behavior
+- 🔧 Easy to customize defaults (snapshot size, throttle, lenses, keymaps, and Telescope integration)
+- 🔁 Non-persistent by default — snapshots reset per session unless explicitly persisted by user tooling
+- 🔒 Privacy-first design — snapshots remain local and scoped to the current buffer
+- 🛠️ Designed for low friction workflows: quick capture, browse, replay, and restore without leaving the editor
 
 ## Visual Enhancements
 - ✨ Professional Nerd Font icons throughout the interface
@@ -104,6 +119,146 @@ require('traceback').setup({
 })
 ```
 
+## Code Actions & Systematic Suggestions
+
+TraceBack now includes a powerful code actions and systematic suggestion system that provides intelligent, context-aware recommendations for improving your code. The system analyzes complexity, security patterns, performance characteristics, and code quality to offer actionable insights.
+
+### 🚀 Smart Suggestion Engine
+
+The suggestion engine uses advanced heuristics to analyze your code and provide:
+
+- **🔍 Complexity Analysis**: Identifies overly complex functions and suggests refactoring strategies
+- **🔒 Security Improvements**: Detects security vulnerabilities and provides secure alternatives  
+- **⚡ Performance Optimizations**: Finds performance bottlenecks and suggests optimizations
+- **📝 Code Quality**: Recommends modern patterns and best practices
+- **🛠️ Contextual Actions**: Provides quick fixes, explanations, and automated improvements
+
+### 💡 Features
+
+#### Intelligent Code Analysis
+- **Function Complexity**: Analyzes cyclomatic complexity, parameter count, and nesting depth
+- **Pattern Detection**: Identifies code smells and anti-patterns specific to your language
+- **Security Scanning**: Detects CWE-mapped vulnerabilities with confidence scoring
+- **Performance Profiling**: Identifies inefficient patterns, especially in loops
+
+#### Contextual Actions
+- **Quick Fixes**: One-click application of secure alternatives and optimizations
+- **Refactoring Suggestions**: Detailed guidance for breaking down complex functions
+- **Security Upgrades**: Automatic replacement of insecure patterns with safe alternatives
+- **Code Modernization**: Suggestions to update code to modern language features
+
+#### Advanced Action Types
+- 🛡️ **Add to Allowlist**: Suppress false positives in security scanning
+- 📝 **Ignore Inline**: Add language-specific ignore comments
+- 💾 **Ignore Virtual**: Add virtual text markers without modifying code
+- 📖 **Show Explanation**: Detailed explanations with CWE references and examples
+- 🔧 **Apply Suggested Fix**: Automatic code transformation to secure/optimized versions
+- 🏗️ **Refactor Guidance**: Step-by-step refactoring recommendations
+- 📚 **Quick Documentation**: Links to relevant security and best practice documentation
+- 📋 **Copy Secure Snippet**: Copy secure code alternatives to clipboard
+
+### 🎯 Commands
+
+#### Core Actions
+- `:TracebackActions` — Show available actions for annotation at cursor
+- `:TracebackQuickFix` — Apply the best available quick fix
+- `:TracebackExplain` — Show detailed explanation for current annotation
+- `:TracebackAllowlist [pattern]` — Add pattern to security allowlist
+
+#### Smart Suggestions  
+- `:TracebackSuggest [scope]` — Show suggestions (scope: cursor/function/buffer)
+- `:TracebackSuggestBuffer` — Analyze entire buffer for improvements
+- `:TracebackSuggestFunction` — Analyze current function for refactoring opportunities
+- `:TracebackRefactor` — Show refactoring suggestions for current location
+
+#### Utility Commands
+- `:TracebackAnnotations` — List all annotations at cursor position
+
+### ⌨️ Default Keymaps
+
+```lua
+-- Action keymaps (can be customized in setup)
+'<Leader>ta'  -- Show actions for annotation at cursor
+'<Leader>tf'  -- Apply quick fix
+'<Leader>te'  -- Explain annotation
+'<Leader>tw'  -- Add to allowlist
+'<Leader>ts'  -- Show buffer improvement suggestions  
+'<Leader>tF'  -- Show function suggestions
+```
+
+### 🔧 Configuration
+
+```lua
+require('traceback').setup({
+  -- ... existing config ...
+  
+  -- Actions and suggestions configuration
+  actions = {
+    auto_register_lens_providers = true,
+    enable_smart_suggestions = true,
+    enable_taint_analysis = true,
+    suggestion_engine = {
+      enable_complexity_analysis = true,
+      enable_pattern_detection = true, 
+      enable_security_suggestions = true,
+      enable_performance_hints = true,
+      suggestion_confidence_threshold = 0.7,
+      max_suggestions_per_scan = 10
+    },
+    keymaps = {
+      show_actions = '<Leader>ta',
+      quick_fix = '<Leader>tf',
+      explain = '<Leader>te',
+      allowlist = '<Leader>tw',
+      suggest_improvements = '<Leader>ts',
+      suggest_function = '<Leader>tF'
+    }
+  }
+})
+```
+
+### 🎨 Example Workflow
+
+1. **Detect Issues**: Lenses automatically highlight security, complexity, and performance issues
+2. **Get Suggestions**: Use `<Leader>ta` to see available actions for the issue at cursor
+3. **Apply Fixes**: Choose from quick fixes, explanations, or allowlist additions  
+4. **Bulk Analysis**: Use `<Leader>ts` to analyze the entire buffer for improvements
+5. **Function Focus**: Use `<Leader>tF` to get specific suggestions for the current function
+
+### 📊 Suggestion Types
+
+#### Security Suggestions
+- **High Confidence**: Direct CWE mappings with proven secure alternatives
+- **Pattern-Based**: Language-specific vulnerability patterns  
+- **Context-Aware**: Considers surrounding code for reduced false positives
+
+#### Refactoring Suggestions  
+- **Complexity Reduction**: Break down overly complex functions
+- **Parameter Optimization**: Suggest parameter objects for functions with too many args
+- **Nesting Reduction**: Recommend guard clauses and early returns
+
+#### Performance Suggestions
+- **Loop Optimization**: Detect inefficient patterns in loops with high impact scoring
+- **Memory Efficiency**: Identify unnecessary allocations and suggest alternatives
+- **Language-Specific**: Modern language features for better performance
+
+### 🛡️ Security Integration
+
+The actions system integrates deeply with the security lens to provide:
+
+- **CVE/CWE Mapping**: Links security findings to official vulnerability databases
+- **Confidence Scoring**: ML-inspired confidence ratings for security findings
+- **Secure Alternatives**: Ready-to-use secure code snippets
+- **Allowlist Management**: Project-specific suppression of false positives
+
+### 🧠 Intelligence Features
+
+- **Treesitter Integration**: Uses syntax trees for accurate code analysis
+- **Context Awareness**: Considers function scope, loop context, and code patterns
+- **Language-Specific**: Tailored suggestions for each supported language
+- **Confidence Scoring**: Suggestions include confidence percentages to guide decisions
+- **Impact Assessment**: Each suggestion shows its potential impact (security/performance/maintainability)
+
 ## Visual Features & Icons
 
 TraceBack includes comprehensive visual enhancements with Nerd Font icons:
@@ -180,11 +335,11 @@ require('traceback').setup({
 ```
 
 Notes:
-- The lens is intended as a lightweight helper. Do not rely on it for automated secret-scanning in CI or compliance workflows—use dedicated secrets-detection tools for those use cases.
+- The lens is intended as a lightweight helper. Do not rely on it for automated secret-scanning in CI or compliance workflows use dedicated secrets-detection tools for those use cases.
 
 ## License
 
-This project is open source under the MIT License — see the `LICENSE` file for
+This project is open source under the MIT License, see the `LICENSE` file for
 details.
 
 ## Contributing

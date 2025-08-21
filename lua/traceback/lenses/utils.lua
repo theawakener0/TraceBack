@@ -20,27 +20,98 @@ function U.get_ts_query(ft, kind)
       lua = [[
         (function_declaration name: (_) @name) @fn
         (local_function name: (_) @name) @fn
+        (assignment_statement 
+          (variable_list 
+            name: (identifier) @name) 
+          (expression_list 
+            value: (function_definition))) @fn
       ]],
-      python = [[ (function_definition name: (identifier) @name) @fn ]],
+      python = [[ 
+        (function_definition name: (identifier) @name) @fn 
+        (async_function_definition name: (identifier) @name) @fn
+        (class_definition name: (identifier) @name) @fn
+      ]],
       javascript = [[
         (function_declaration name: (identifier) @name) @fn
         (method_definition name: (property_identifier) @name) @fn
+        (variable_declarator 
+          name: (identifier) @name 
+          value: (function_expression)) @fn
+        (variable_declarator 
+          name: (identifier) @name 
+          value: (arrow_function)) @fn
+        (assignment_expression 
+          left: (member_expression property: (property_identifier) @name)
+          right: (function_expression)) @fn
+        (assignment_expression 
+          left: (member_expression property: (property_identifier) @name)
+          right: (arrow_function)) @fn
+        (class_declaration name: (identifier) @name) @fn
       ]],
       typescript = [[
         (function_declaration name: (identifier) @name) @fn
         (method_definition name: (property_identifier) @name) @fn
+        (variable_declarator 
+          name: (identifier) @name 
+          value: (function_expression)) @fn
+        (variable_declarator 
+          name: (identifier) @name 
+          value: (arrow_function)) @fn
+        (assignment_expression 
+          left: (member_expression property: (property_identifier) @name)
+          right: (function_expression)) @fn
+        (assignment_expression 
+          left: (member_expression property: (property_identifier) @name)
+          right: (arrow_function)) @fn
+        (class_declaration name: (type_identifier) @name) @fn
+        (interface_declaration name: (type_identifier) @name) @fn
       ]],
       go = [[
         (function_declaration name: (identifier) @name) @fn
         (method_declaration name: (field_identifier) @name) @fn
+        (type_declaration 
+          (type_spec name: (type_identifier) @name 
+            type: (struct_type))) @fn
+        (type_declaration 
+          (type_spec name: (type_identifier) @name 
+            type: (interface_type))) @fn
+      ]],
+      c = [[
+        (function_definition 
+          declarator: (function_declarator 
+            declarator: (identifier) @name)) @fn
+        (function_definition 
+          declarator: (function_declarator 
+            declarator: (pointer_declarator 
+              declarator: (identifier) @name))) @fn
+        (declaration 
+          declarator: (function_declarator 
+            declarator: (identifier) @name)) @fn
+      ]],
+      cpp = [[
+        (function_definition 
+          declarator: (function_declarator 
+            declarator: (identifier) @name)) @fn
+        (function_definition 
+          declarator: (function_declarator 
+            declarator: (qualified_identifier 
+              name: (identifier) @name))) @fn
+        (template_declaration 
+          (function_definition 
+            declarator: (function_declarator 
+              declarator: (identifier) @name))) @fn
+        (class_specifier name: (type_identifier) @name) @fn
+        (struct_specifier name: (type_identifier) @name) @fn
       ]],
     },
     sc = {
       lua = [[ (comment) @c (string) @s ]],
       python = [[ (comment) @c (string) @s ]],
-      javascript = [[ (comment) @c (string) @s ]],
-      typescript = [[ (comment) @c (string) @s ]],
+      javascript = [[ (comment) @c (string) @s (template_string) @s ]],
+      typescript = [[ (comment) @c (string) @s (template_string) @s ]],
       go = [[ (comment) @c (interpreted_string_literal) @s (raw_string_literal) @s ]],
+      c = [[ (comment) @c (string_literal) @s (char_literal) @s ]],
+      cpp = [[ (comment) @c (string_literal) @s (char_literal) @s (raw_string_literal) @s ]],
       default = [[ (comment) @c (string) @s ]],
     },
   }

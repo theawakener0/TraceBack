@@ -45,6 +45,22 @@ function M.setup(user)
     end
   end)
   
+  -- Initialize actions system with code actions and systematic suggestions
+  pcall(function()
+    require('traceback.actions').setup({
+      auto_register_lens_providers = true,
+      enable_smart_suggestions = true,
+      enable_taint_analysis = M._config.lenses.treesitter,
+      keymaps = {
+        show_actions = '<Leader>ta',
+        quick_fix = '<Leader>tf',
+        explain = '<Leader>te',
+        allowlist = '<Leader>tw'
+      }
+    })
+    vim.notify('󰒓 TraceBack actions system initialized', vim.log.levels.INFO)
+  end)
+  
   -- Load telescope extension if available and enabled
   if M._config.telescope then
     pcall(function()
