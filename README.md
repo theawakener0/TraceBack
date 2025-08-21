@@ -21,7 +21,7 @@ lazy.nvim:
 ```lua
 -- in your plugins spec (e.g. lua/plugins.lua)
 {
-  'yourname/traceback.nvim',
+  'theawakener0/TraceBack',
   dependencies = { 'nvim-lua/plenary.nvim', 'nvim-telescope/telescope.nvim' },
   config = function()
     require('traceback').setup({})
@@ -35,7 +35,7 @@ packer.nvim:
 -- in your packer startup function (e.g. init.lua or lua/plugins.lua)
 return require('packer').startup(function(use)
   use {
-    'yourname/traceback.nvim',
+    'theawakener0/TraceBack',
     requires = { 'nvim-lua/plenary.nvim', 'nvim-telescope/telescope.nvim' },
     config = function()
       require('traceback').setup({})
