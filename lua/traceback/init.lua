@@ -29,18 +29,36 @@ M._config = config
 
 function M.setup(user)
   M._config = vim.tbl_deep_extend('force', config, user or {})
+  
+  -- Initialize core components
   require('traceback.core').setup(M._config)
-  -- pass lens config
+  
+  -- Setup lenses with configuration
   pcall(function()
     require('traceback.lenses').set_config(M._config.lenses)
+    local enabled_lenses = {}
+    if M._config.lenses.code then table.insert(enabled_lenses, '󰌵 Code') end
+    if M._config.lenses.debug then table.insert(enabled_lenses, '󰃤 Debug') end
+    if M._config.lenses.security then table.insert(enabled_lenses, '󰌾 Security') end
+    if #enabled_lenses > 0 then
+      vim.notify('󰈙 TraceBack lenses active: ' .. table.concat(enabled_lenses, ', '), vim.log.levels.INFO)
+    end
   end)
-  -- load telescope extension if available and enabled
+  
+  -- Load telescope extension if available and enabled
   if M._config.telescope then
     pcall(function()
       require('telescope').load_extension('traceback')
+      vim.notify('󰭎 TraceBack telescope extension loaded', vim.log.levels.INFO)
     end)
   end
+  
   require('traceback.commands').setup(M._config.keymaps)
+  
+  -- Show helpful setup info
+  local snapshot_info = string.format('󰄄 Snapshots: max %d, throttle %dms', 
+    M._config.snapshot.max_snapshots, M._config.snapshot.throttle_ms)
+  vim.notify('󰈙 TraceBack initialized - ' .. snapshot_info, vim.log.levels.INFO)
 end
 
 return M

@@ -768,7 +768,7 @@ function M.render(bufnr, ns, cfg, from, to)
         if score >= min_score then
           vim.api.nvim_buf_set_extmark(bufnr, ns, (from+i-2), s-1, { end_col = e, hl_group = r.hl })
           vim.api.nvim_buf_set_extmark(bufnr, ns, (from+i-2), 0, {
-            virt_text = {{'󰒃 '..r.msg, r.hl}}, virt_text_pos = 'eol'
+            virt_text = {{'󰌾 '..r.msg, r.hl}}, virt_text_pos = 'eol'
           })
           anno = anno + 1
           if anno >= max_anno then break end

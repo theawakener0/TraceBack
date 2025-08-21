@@ -6,7 +6,12 @@ local function format_item(idx, s)
   local time = os.date('%H:%M:%S', math.floor((s.ts or 0)/1000))
   local file = s.file ~= '' and vim.fn.fnamemodify(s.file, ':t') or '[No Name]'
   local first = (s.lines[1] or ''):gsub('%s+', ' ')
-  return string.format('#%03d %s %s — %s', idx, time, file, first)
+  -- Truncate first line preview if too long
+  if #first > 50 then
+    first = first:sub(1, 47) .. '...'
+  end
+  local icon = idx == 1 and '󰐃' or '󰥔'  -- Latest snapshot gets pin icon, others get clock
+  return string.format('%s #%03d %s %s — %s', icon, idx, time, file, first)
 end
 
 function M.timeline_items(bufnr)
@@ -31,8 +36,13 @@ function M.timeline_picker()
   local action_state = require('telescope.actions.state')
 
   local items = M.timeline_items()
+  if #items == 0 then
+    vim.notify('󰗌 No snapshots available for current buffer', vim.log.levels.INFO)
+    return
+  end
+  
   pickers.new({}, {
-    prompt_title = 'Traceback Timeline',
+    prompt_title = '󰈙 TraceBack Timeline (' .. #items .. ' snapshots)',
     finder = finders.new_table {
       results = items,
       entry_maker = function(e) return { value = e, display = e.display, ordinal = tostring(e.ordinal) } end,
@@ -48,6 +58,7 @@ function M.timeline_picker()
       local restore = function()
         local selection = action_state.get_selected_entry()
         if selection then
+          vim.notify('󰒮 Restoring snapshot #' .. selection.value.idx, vim.log.levels.INFO)
           require('traceback.core').restore(selection.value.idx)
         end
       end

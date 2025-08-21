@@ -3,15 +3,31 @@ local M = {}
 function M.setup(keymaps)
   vim.api.nvim_create_user_command('TracebackTimeline', function()
     require('traceback.telescope').timeline_picker()
-  end, {})
+  end, { 
+    desc = " 󰈙 Open TraceBack timeline browser - navigate through buffer snapshots with preview" 
+  })
 
   vim.api.nvim_create_user_command('TracebackCapture', function()
     require('traceback.core').capture()
-  end, {})
+  end, { 
+    desc = " 󰄄 Force capture current buffer state - create an immediate snapshot" 
+  })
 
   vim.api.nvim_create_user_command('TracebackRestore', function(opts)
     require('traceback.core').restore(tonumber(opts.args))
-  end, { nargs = 1 })
+  end, { 
+    nargs = 1,
+    desc = " 󰒮 Restore buffer to snapshot index - use :TracebackRestore 1 for most recent",
+    complete = function()
+      local core = require('traceback.core')
+      local tl = core.timeline(vim.api.nvim_get_current_buf())
+      local completions = {}
+      for i = 1, #tl.snapshots do
+        table.insert(completions, tostring(i))
+      end
+      return completions
+    end
+  })
 
   vim.api.nvim_create_user_command('TracebackReplay', function(opts)
     local args = vim.split(opts.args, ' ')
@@ -19,7 +35,10 @@ function M.setup(keymaps)
     local to = tonumber(args[2])
     local delay = tonumber(args[3])
     require('traceback.core').replay(from, to, delay)
-  end, { nargs = '+' })
+  end, { 
+    nargs = '+',
+    desc = " 󰐊 Replay snapshot sequence - :TracebackReplay {from} {to} {delay_ms}"
+  })
 
   require('traceback.lenses').setup_commands()
   -- register optional default keymaps (non-recursive, silent)

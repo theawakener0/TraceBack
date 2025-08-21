@@ -32,8 +32,9 @@ local function ts_render(bufnr, ns, cfg, from, to)
       return total
     end
     local complexity = 1 + (fn_node and count_complexity(fn_node, 0) or 0)
+    local complexity_icon = complexity > 10 and '󰝣' or (complexity > 5 and '󰝤' or '󰝥')
     vim.api.nvim_buf_set_extmark(bufnr, ns, sr, 0, {
-      virt_text = {{string.format('󰘧 %s (C%02d)', name, complexity), 'Comment'}},
+      virt_text = {{string.format('%s 󰌵 %s (C%02d)', complexity_icon, name, complexity), 'Comment'}},
       virt_text_pos = 'eol',
     })
     anno = anno + 1
@@ -68,8 +69,9 @@ local function regex_render(bufnr, ns, cfg, from, to)
         for _ in window:gmatch('%f[%w]for%f[^%w]') do complexity = complexity + 1 end
         for _ in window:gmatch('%f[%w]while%f[^%w]') do complexity = complexity + 1 end
         for _ in window:gmatch('%f[%w]case%f[^%w]') do complexity = complexity + 1 end
+        local complexity_icon = complexity > 10 and '󰝣' or (complexity > 5 and '󰝤' or '󰝥')
         vim.api.nvim_buf_set_extmark(bufnr, ns, (from+i-2), 0, {
-          virt_text = {{string.format('󰘧 %s (C%02d)', name, complexity), 'Comment'}},
+          virt_text = {{string.format('%s 󰌵 %s (C%02d)', complexity_icon, name, complexity), 'Comment'}},
           virt_text_pos = 'eol',
         })
         anno = anno + 1

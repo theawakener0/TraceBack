@@ -48,31 +48,62 @@ function M.set_config(user_cfg)
 end
 
 function M.setup_commands()
-  vim.api.nvim_create_user_command('TracebackLenses', function() M.render() end, {})
+  vim.api.nvim_create_user_command('TracebackLenses', function() 
+    local total = M.render()
+    if total and total > 0 then
+      vim.notify('󰍉 Rendered ' .. total .. ' lens annotations', vim.log.levels.INFO)
+    end
+  end, { 
+    desc = " 󰍉 Render all active lenses - show code insights, debug info, and security warnings" 
+  })
+  
   vim.api.nvim_create_user_command('TracebackLensesToggle', function(opts)
     local which = opts.args
+    local icons = { code = '󰌵', debug = '󰃤', security = '󰌾' }
+    local old_state = cfg[which]
+    
     if which == 'code' then cfg.code = not cfg.code
     elseif which == 'debug' then cfg.debug = not cfg.debug
     elseif which == 'security' then cfg.security = not cfg.security
     end
+    
+    local status = cfg[which] and 'enabled' or 'disabled'
+    local icon = icons[which] or '󰒓'
+    vim.notify(icon .. ' ' .. which:gsub('^%l', string.upper) .. ' lens ' .. status, vim.log.levels.INFO)
     M.render()
-  end, { nargs = 1, complete = function() return {'code','debug','security'} end })
+  end, { 
+    nargs = 1, 
+    complete = function() return {'code','debug','security'} end,
+    desc = " 󰒓 Toggle specific lens type - code/debug/security"
+  })
 
   -- interactive commands for security tuning
   vim.api.nvim_create_user_command('TracebackSecurityAllow', function(opts)
     local arg = opts.args
     local lens = modules.security
-    if lens and lens.add_allow then lens.add_allow(arg) end
+    if lens and lens.add_allow then 
+      lens.add_allow(arg)
+      vim.notify('󰌾 Added security allowlist entry: ' .. arg, vim.log.levels.INFO)
+    end
     M.render()
-  end, { nargs = 1 })
+  end, { 
+    nargs = 1,
+    desc = " 󰌾 Add pattern to security lens allowlist - suppress false positives"
+  })
 
   vim.api.nvim_create_user_command('TracebackSecuritySet', function(opts)
     local parts = vim.split(opts.args, ' ')
     local key = parts[1]
     local val = tonumber(parts[2]) or parts[2]
-    if key and val ~= nil then cfg[key] = val end
+    if key and val ~= nil then 
+      cfg[key] = val 
+      vim.notify('󰒓 Set ' .. key .. ' = ' .. tostring(val), vim.log.levels.INFO)
+    end
     M.render()
-  end, { nargs = '+' })
+  end, { 
+    nargs = '+',
+    desc = " 󰒓 Configure lens settings - set key value pairs"
+  })
 
   local group = vim.api.nvim_create_augroup('TracebackLensesAuto', {clear=true})
   vim.api.nvim_create_autocmd('DiagnosticChanged', { group = group, callback = function(args)
