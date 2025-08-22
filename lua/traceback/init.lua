@@ -2,8 +2,8 @@ local M = {}
 
 local config = {
   snapshot = {
-    max_snapshots = 200,
-    throttle_ms = 500,
+    max_snapshots = 1000,
+    throttle_ms = 5000,
   },
   lenses = {
     code = true,
