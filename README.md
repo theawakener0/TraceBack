@@ -352,16 +352,6 @@ require('traceback').setup({
 Notes:
 - The lens is intended as a lightweight helper. Do not rely on it for automated secret-scanning in CI or compliance workflows use dedicated secrets-detection tools for those use cases.
 
-## License
-
-This project is open source under the MIT License, see the `LICENSE` file for
-details.
-
-## Contributing
-
-Contributions are welcome! See `CONTRIBUTING.md` for guidelines on reporting
-issues, opening pull requests, and coding style.
-
 ## Quick configuration (actions & suggestions)
 
 If actions or suggestions report "no annotation at the cursor" you most likely need to enable the providers and suggestion engine in your setup. Add the following to your Neovim config (init.lua or a plugin config file) to enable default providers, keymaps, and the suggestion engine:
@@ -435,4 +425,12 @@ vim.cmd('TracebackSuggestBuffer')
 vim.cmd('TracebackActions')
 ```
 
-If you want, I can also add a short example section to `CONTRIBUTING.md` showing how to add new suggestion rules and provider tests.
+## License
+
+This project is open source under the MIT License, see the `LICENSE` file for
+details.
+
+## Contributing
+
+Contributions are welcome! See `CONTRIBUTING.md` for guidelines on reporting
+issues, opening pull requests, and coding style.
