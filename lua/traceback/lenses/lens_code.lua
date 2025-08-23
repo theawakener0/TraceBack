@@ -156,7 +156,7 @@ local function regex_render(bufnr, ns, cfg, from, to)
         func_type = ''
       end
       
-      local complexity_icon = complexity > 15 and '🔴' or (complexity > 10 and '🟡' or (complexity > 5 and '🟠' or '🟢'))
+      local complexity_icon = complexity > 15 and '' or (complexity > 10 and '' or (complexity > 5 and '' or ''))
       
       vim.api.nvim_buf_set_extmark(bufnr, ns, (from+i-2), 0, {
         virt_text = {{string.format('%s %s %s (C%02d)', complexity_icon, func_type, name, complexity), 'Comment'}},

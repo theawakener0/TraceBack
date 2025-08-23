@@ -84,11 +84,26 @@ All commands now include descriptive help text with visual icons:
 
 Default keymaps (can be overridden via setup):
 
+### Core Features
 - `<Leader>tt` — 🔭 Open timeline picker with enhanced UI
 - `<Leader>tc` — 📸 Force capture with confirmation
 - `<Leader>tr` — ⏪ Restore last snapshot (maps to `:TracebackRestore 1` by default)
 - `<Leader>tp` — ▶️ Replay a short range of snapshots (maps to `:TracebackReplay 1 2 100` by default)  
 - `<Leader>ts` — 🔒 Toggle the security lens with status notification
+
+### Actions & Suggestions (NEW)
+- `<Leader>ta` — 💡 Show actions for annotation at cursor (fix, explain, allowlist, etc.)
+- `<Leader>tf` — 🔧 Apply quick fix for annotation at cursor
+- `<Leader>te` — 📖 Explain annotation at cursor with detailed information
+- `<Leader>tS` — 🧠 Show buffer-wide improvement suggestions (Telescope picker)
+- `<Leader>tq` — 📋 Populate quickfix with stack trace file:line captures
+
+### Example Action Workflow
+1. **Navigate to annotated code** - lenses highlight issues automatically
+2. **Press `<Leader>ta`** - see available actions (fix, explain, allowlist)
+3. **Choose an action** - apply fix, get explanation, or suppress false positive
+4. **Use `<Leader>tS`** - get buffer-wide suggestions for improvements
+5. **Press `<Leader>tq`** - extract stack traces to quickfix for easy navigation
 
 You can keep using the commands above or rely on the default keymaps. All keymaps are non-recursive and silent by default.
 
@@ -346,3 +361,78 @@ details.
 
 Contributions are welcome! See `CONTRIBUTING.md` for guidelines on reporting
 issues, opening pull requests, and coding style.
+
+## Quick configuration (actions & suggestions)
+
+If actions or suggestions report "no annotation at the cursor" you most likely need to enable the providers and suggestion engine in your setup. Add the following to your Neovim config (init.lua or a plugin config file) to enable default providers, keymaps, and the suggestion engine:
+
+```lua
+require('traceback').setup({
+  lenses = {
+    code = true,
+    debug = true,
+    security = true,
+    auto_render = true,
+    max_annotations = 200,
+    treesitter = true,
+  },
+  actions = {
+    auto_register_lens_providers = true, -- ensures providers are registered even if setup wasn't explicitly called elsewhere
+    enable_smart_suggestions = true,
+    suggestion_engine = {
+      enable_complexity_analysis = true,
+      enable_pattern_detection = true,
+      enable_security_suggestions = true,
+      enable_performance_hints = true,
+      suggestion_confidence_threshold = 0.6,
+      max_suggestions_per_scan = 8,
+      timeout_ms = 1200,
+      cache_enabled = true,
+      cache_ttl_ms = 60000,
+    },
+    keymaps = {
+      show_actions = '<Leader>ta',
+      quick_fix = '<Leader>tf',
+      explain = '<Leader>te',
+      allowlist = '<Leader>tw',
+      suggest_improvements = '<Leader>ts',
+      suggest_function = '<Leader>tF'
+    }
+  },
+  keymaps = { timeline = '<Leader>tt' },
+})
+```
+
+Notes:
+- Call `require('traceback').setup()` early in your config so providers and keymaps are registered.
+- If you prefer lazy-loading, set `auto_register_lens_providers = true` so `traceback.actions` can register providers on demand.
+- Make sure the buffer has a correct `filetype` (e.g. `:set filetype?`) — many providers are filetype-aware.
+
+## Suggestions (how to use)
+
+The suggestion engine provides scoped suggestions and actions. Use these commands and keymaps after enabling `enable_smart_suggestions` in the config above:
+
+- `:TracebackSuggest` or `<Leader>ts` — Open a picker with buffer-wide suggestions (sorted by confidence).
+- `:TracebackSuggestFunction` or `<Leader>tF` — Analyze the function under cursor and show targeted refactor suggestions.
+- `:TracebackActions` or `<Leader>ta` — Show actions available for the annotation at the cursor (quick fix, explain, allowlist, etc.).
+
+Troubleshooting:
+- "No annotation at cursor": make sure `require('traceback').setup()` ran, `lenses.debug`/`lenses.security` are enabled, and that the cursor is on a line with a highlighted annotation. Use `:TracebackLenses` to render lenses and confirm annotations.
+- If suggestions are empty or low-confidence, increase `max_suggestions_per_scan` or lower `suggestion_confidence_threshold` temporarily while tuning rules for your codebase.
+- If providers fail silently, enable debug logging in your config (add `actions = { error_handling = true }`) to surface failures via `vim.notify`.
+
+Examples
+- Run a buffer scan and open suggestions picker:
+
+```lua
+-- call from Lua or a mapping
+vim.cmd('TracebackSuggestBuffer')
+```
+
+- Show actions for the annotation under cursor:
+
+```lua
+vim.cmd('TracebackActions')
+```
+
+If you want, I can also add a short example section to `CONTRIBUTING.md` showing how to add new suggestion rules and provider tests.

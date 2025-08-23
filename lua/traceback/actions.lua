@@ -107,8 +107,16 @@ function M.setup(opts)
   
   -- Auto-register lens providers if enabled
   if cfg.auto_register_lens_providers then
-    M._register_default_providers()
+    local ok, err = pcall(M._register_default_providers)
+    if not ok and cfg.error_handling then
+      vim.notify("TraceBack: Failed to register providers: " .. tostring(err), vim.log.levels.WARN)
+    elseif ok and cfg.error_handling then
+      vim.notify("TraceBack: Successfully registered " .. vim.tbl_count(providers) .. " providers", vim.log.levels.INFO)
+    end
   end
+  
+  -- Mark setup as completed
+  M._setup_completed = true
   
   -- Setup keymaps
   M._setup_keymaps()
@@ -693,14 +701,22 @@ function M.get_annotations_at_cursor(bufnr, cursor_pos)
     end
     return {}
   end
-  
+
   if not validate_position(cursor_pos) then
     if cfg.error_handling then
       vim.notify("Invalid cursor position for annotations", vim.log.levels.DEBUG)
     end
     return {}
   end
-  
+
+  -- Ensure at least one provider is registered 
+  if next(providers) == nil then
+    if cfg.error_handling then
+      vim.notify("TraceBack: no providers registered. Call require('traceback.actions').setup() or enable auto_register_lens_providers in setup()", vim.log.levels.WARN)
+    end
+    pcall(M._register_default_providers)
+  end
+
   local all_annotations = {}
   local start_time = os.clock()
   local timeout_seconds = (cfg.timeout_ms or 1000) / 1000
@@ -1300,6 +1316,38 @@ function M._setup_commands()
   end, {
     desc = "󰖷 Show refactoring suggestions for current location"
   })
+end
+
+-- Convenience functions for commands
+function M.quick_fix_at_cursor()
+  local annotations = M.get_annotations_at_cursor()
+  if #annotations > 0 then
+    for _, action in ipairs(annotations[1].actions or {}) do
+      if action.title:lower():match("fix") then
+        M.execute_action(action, annotations[1])
+        return
+      end
+    end
+  end
+  vim.notify("󰘖 No quick fix available", vim.log.levels.INFO)
+end
+
+function M.explain_at_cursor()
+  local annotations = M.get_annotations_at_cursor()
+  if #annotations > 0 then
+    M._handle_explain(annotations[1])
+  else
+    vim.notify("󰘖 No annotations at cursor", vim.log.levels.INFO)
+  end
+end
+
+function M.allowlist_at_cursor()
+  local annotations = M.get_annotations_at_cursor()
+  if #annotations > 0 then
+    M._handle_allowlist(annotations[1])
+  else
+    vim.notify("󰘖 No annotations at cursor", vim.log.levels.INFO)
+  end
 end
 
 return M

@@ -21,6 +21,12 @@ local config = {
     restore = '<Leader>tr',     -- restore last snapshot (or use :TracebackRestore {idx})
     replay = '<Leader>tp',      -- replay snapshots
     toggle_security = '<Leader>ts', -- toggle security lens
+    -- Action keymaps
+    actions = '<Leader>ta',     -- show actions for annotation at cursor
+    quick_fix = '<Leader>tf',   -- apply quick fix
+    explain = '<Leader>te',     -- explain annotation
+    suggest = '<Leader>tS',     -- show buffer suggestions (capital S to avoid conflict)
+    quickfix_captures = '<Leader>tq', -- populate quickfix with stack traces
   },
   telescope = true,
 }
