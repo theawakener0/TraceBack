@@ -6,6 +6,7 @@ Why use it?
 - Instant safety net: recover from mistakes or experiments without touching your VCS.
 - Security-first: the Security Lens highlights high‑entropy secrets, insecure patterns, and common CWE-class issues so you can fix problems before they escape the editor.
 - Actionable insights: Code and Debug lenses reveal complexity hotspots, diagnostics, and quick fixes — plus contextual suggestions to refactor or harden code.
+- Actionable insights: Code and LSP lenses reveal complexity hotspots, diagnostics, and quick fixes — plus contextual suggestions to refactor or harden code.
 - Low friction: in-memory snapshots, Telescope timeline browser, configurable keymaps, and minimal performance overhead.
 
 Install, open the timeline, and let TraceBack keep your edits safe, your code cleaner, and security visible while you code.
@@ -19,7 +20,7 @@ Install, open the timeline, and let TraceBack keep your edits safe, your code cl
 - 🧩 Language support: C, C++, Python, Lua, JavaScript, Go (Treesitter-aware)  
 - 🔍 Lenses with rich visual indicators:
   - 💡 Code Lens — inline complexity and structure hints (color-coded)
-  - 🐛 Debug Lens — highlights error/log patterns and summarizes LSP diagnostics
+  - 🧰 LSP Lens — inline diagnostics from your LSP with summary (E/W/I/H)
   - 🔒 Security Lens — flags common insecure patterns and high-entropy secrets
 - 🌲 Treesitter integration when available for more accurate function detection and to ignore matches inside strings/comments  
 - ⚙️ Lightweight, in-memory snapshots (no VCS commits), minimal performance overhead, and fully configurable behavior
@@ -76,7 +77,7 @@ All commands now include descriptive help text with visual icons:
 - ⏪ `:TracebackRestore {idx}` – Restore buffer to snapshot index (supports tab completion)
 - ▶️ `:TracebackReplay {from} {to} {delay_ms}` – Replay snapshot sequence with animation
 - 🔍 `:TracebackLenses` – Render all active lenses with annotation count
-- ⚙️ `:TracebackLensesToggle {code|debug|security}` – Toggle specific lens types with status feedback
+- ⚙️ `:TracebackLensesToggle {code|lsp|security}` – Toggle specific lens types with status feedback
 - 🔒 `:TracebackSecurityAllow {pattern}` – Add pattern to security allowlist
 - ⚙️ `:TracebackSecuritySet {key} {value}` – Configure lens settings
 
@@ -96,14 +97,14 @@ Default keymaps (can be overridden via setup):
 - `<Leader>tf` — 🔧 Apply quick fix for annotation at cursor
 - `<Leader>te` — 📖 Explain annotation at cursor with detailed information
 - `<Leader>tS` — 🧠 Show buffer-wide improvement suggestions (Telescope picker)
-- `<Leader>tq` — 📋 Populate quickfix with stack trace file:line captures
+  
 
 ### Example Action Workflow
 1. **Navigate to annotated code** - lenses highlight issues automatically
 2. **Press `<Leader>ta`** - see available actions (fix, explain, allowlist)
 3. **Choose an action** - apply fix, get explanation, or suppress false positive
 4. **Use `<Leader>tS`** - get buffer-wide suggestions for improvements
-5. **Press `<Leader>tq`** - extract stack traces to quickfix for easy navigation
+5. Optionally review diagnostics inline from the LSP lens
 
 You can keep using the commands above or rely on the default keymaps. All keymaps are non-recursive and silent by default.
 
@@ -114,14 +115,14 @@ The plugin provides rich visual feedback:
 - **Timeline Browser**: 📜 Enhanced telescope picker with snapshot count and visual indicators
 - **Status Messages**: 💬 Informative notifications show operation results and lens status
 - **Code Annotations**: 💡 Function complexity with color-coded indicators (🟢🟡🔴)
-- **Debug Indicators**: 🐛 Error and warning patterns highlighted inline
+- **LSP Diagnostics**: 🧰 Inline error/warn/info/hint messages with summary
 - **Security Warnings**: 🔒 Security issues flagged with contextual messages
 
 ## Config
 ```lua
 require('traceback').setup({
   snapshot = { max_snapshots = 200, throttle_ms = 500 },
-  lenses = { code = true, debug = true, security = true, auto_render = true, max_annotations = 200, scan_window = 400, treesitter = true },
+  lenses = { code = true, lsp = true, security = true, auto_render = true, max_annotations = 200, scan_window = 400, treesitter = true },
   -- customize default keymaps:
   keymaps = {
     timeline = '<Leader>tt',
@@ -291,10 +292,10 @@ TraceBack includes comprehensive visual enhancements with Nerd Font icons:
   - 🔴 High complexity (10+)
 - **Function Detection**: Smart function naming with Treesitter support
 
-### 🐛 Debug Lens Features  
-- **Error Patterns**: Highlight exceptions, errors, and warnings
-- **Diagnostic Summary**: 🐛 Real-time LSP diagnostic counts (E/W format)
-- **Pattern Recognition**: Context-aware detection avoiding false positives
+### 🧰 LSP Lens Features  
+- **Inline Diagnostics**: Render LSP messages with severity icons
+- **Diagnostic Summary**: Real-time counts (E/W/I/H) at viewport top
+- **Codes & Details**: Include diagnostic codes when provided by the server
 
 ### 🔒 Security Lens Capabilities
 - **Threat Detection**: 🔒 Security warnings for sensitive patterns
@@ -345,7 +346,7 @@ Example configuration (disable security lens):
 
 ```lua
 require('traceback').setup({
-  lenses = { code = true, debug = true, security = false },
+  lenses = { code = true, lsp = true, security = false },
 })
 ```
 
@@ -360,7 +361,7 @@ If actions or suggestions report "no annotation at the cursor" you most likely n
 require('traceback').setup({
   lenses = {
     code = true,
-    debug = true,
+    lsp = true,
     security = true,
     auto_render = true,
     max_annotations = 200,
