@@ -31,6 +31,7 @@ end
 local function snapshot_buf(bufnr)
   local lines = get_buf_text(bufnr)
   return {
+    bufnr = bufnr,
     ts = now_ms(),
     cursor = vim.api.nvim_win_get_cursor(0),
     file = vim.api.nvim_buf_get_name(bufnr),
@@ -67,6 +68,7 @@ local function save_state()
         local s = snaps[i]
         -- copy only primitive/serializable fields
         table.insert(s_list, {
+          bufnr = s.bufnr,
           ts = s.ts,
           cursor = s.cursor,
           file = s.file,
@@ -131,45 +133,42 @@ local function load_state()
 
   for k, v in pairs(decoded) do
     -- skip unnamed buffer timelines if any slipped into the state file
-    if vim.startswith(k, 'buf:') then goto continue end
-    if type(v) ~= 'table' then goto continue end
-    local raw_snaps = v.snapshots
-    if type(raw_snaps) ~= 'table' then goto continue end
+    if not vim.startswith(k, 'buf:') and type(v) == 'table' then
+      local raw_snaps = v.snapshots
+      if type(raw_snaps) == 'table' then
+        local snaps = {}
+        for i = 1, #raw_snaps do
+          local s = raw_snaps[i]
+          if type(s) == 'table' and type(s.lines) == 'table' then
+            local ts = tonumber(s.ts) or now_ms()
+            local cursor = s.cursor
+            if type(cursor) ~= 'table' or #cursor < 2 then cursor = {1, 1} end
+            local file = s.file or k
+            local bufnr = s.bufnr  -- restore bufnr if available
+            local lines = {}
+            for _, ln in ipairs(s.lines) do table.insert(lines, tostring(ln or '')) end
+            table.insert(snaps, { bufnr = bufnr, ts = ts, cursor = cursor, file = file, lines = lines })
+          end
+        end
 
-    local snaps = {}
-    for i = 1, #raw_snaps do
-      local s = raw_snaps[i]
-      if type(s) ~= 'table' or type(s.lines) ~= 'table' then
-        -- skip malformed snapshot
-      else
-        local ts = tonumber(s.ts) or now_ms()
-        local cursor = s.cursor
-        if type(cursor) ~= 'table' or #cursor < 2 then cursor = {1, 1} end
-        local file = s.file or k
-        local lines = {}
-        for _, ln in ipairs(s.lines) do table.insert(lines, tostring(ln or '')) end
-        table.insert(snaps, { ts = ts, cursor = cursor, file = file, lines = lines })
+        -- keep only the most recent max_snapshots
+        if #snaps > max_snapshots then
+          local keep_from = #snaps - max_snapshots + 1
+          local trimmed = {}
+          for i = keep_from, #snaps do table.insert(trimmed, snaps[i]) end
+          snaps = trimmed
+        end
+
+        local index = tonumber(v.index) or #snaps
+        if #snaps == 0 then index = 0 else index = math.max(1, math.min(index, #snaps)) end
+
+        timelines[k] = {
+          last_capture = 0,
+          snapshots = snaps,
+          index = index,
+        }
       end
     end
-
-    -- keep only the most recent max_snapshots
-    if #snaps > max_snapshots then
-      local keep_from = #snaps - max_snapshots + 1
-      local trimmed = {}
-      for i = keep_from, #snaps do table.insert(trimmed, snaps[i]) end
-      snaps = trimmed
-    end
-
-    local index = tonumber(v.index) or #snaps
-    if #snaps == 0 then index = 0 else index = math.max(1, math.min(index, #snaps)) end
-
-    timelines[k] = {
-      last_capture = 0,
-      snapshots = snaps,
-      index = index,
-    }
-
-    ::continue::
   end
 
   return true

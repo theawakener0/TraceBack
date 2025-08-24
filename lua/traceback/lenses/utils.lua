@@ -7,8 +7,16 @@ function U.get_viewport()
 end
 
 function U.ts_available(bufnr, cfg)
+  -- if the user explicitly disabled treesitter, respect that
   if not (cfg.treesitter == nil or cfg.treesitter) then return false end
-  return pcall(vim.treesitter.get_parser, bufnr)
+
+  -- guard if vim.treesitter is not present (avoid pcall(true, nil) confusion)
+  if not (vim and vim.treesitter and type(vim.treesitter.get_parser) == 'function') then
+    return false
+  end
+
+  local ok, parser = pcall(vim.treesitter.get_parser, bufnr)
+  return ok and parser ~= nil
 end
 
 local ts_queries_cache = {}

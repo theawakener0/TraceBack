@@ -58,8 +58,16 @@ function M.timeline_picker()
       local restore = function()
         local selection = action_state.get_selected_entry()
         if selection then
-          vim.notify('󰒮 Restoring snapshot #' .. selection.value.idx, vim.log.levels.INFO)
-          require('traceback.core').restore(selection.value.idx)
+          local s = selection.value.snapshot
+          -- ensure we restore into the buffer that was snapshotted (fallback to current buffer)
+          local target_buf = (s and s.bufnr) and s.bufnr or vim.api.nvim_get_current_buf()
+          local core = require('traceback.core')
+          local restored_ok = core.restore(selection.value.idx, target_buf)
+          if restored_ok then
+            vim.notify('󰒮 Restored snapshot #' .. selection.value.idx, vim.log.levels.INFO)
+          else
+            vim.notify('󰡼 Failed to restore snapshot #' .. selection.value.idx, vim.log.levels.ERROR)
+          end
         end
       end
       map('i', '<CR>', function()
