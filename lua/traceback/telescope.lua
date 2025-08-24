@@ -11,7 +11,8 @@ local function format_item(idx, s)
     first = first:sub(1, 47) .. '...'
   end
   local icon = idx == 1 and '󰐃' or '󰥔'  -- Latest snapshot gets pin icon, others get clock
-  return string.format('%s #%03d %s %s — %s', icon, idx, time, file, first)
+  local line_count = (s.lines and #s.lines) or 0
+  return string.format('%s #%03d %s %s · %dL — %s', icon, idx, time, file, line_count, first)
 end
 
 function M.timeline_items(bufnr)
@@ -37,18 +38,36 @@ function M.timeline_picker()
   local conf = require('telescope.config').values
   local actions = require('telescope.actions')
   local action_state = require('telescope.actions.state')
+  local previewers = require('telescope.previewers')
 
-  local items = M.timeline_items()
+  local cur_buf = vim.api.nvim_get_current_buf()
+  local items = M.timeline_items(cur_buf)
   if #items == 0 then
     vim.notify('󰗌 No snapshots available for current buffer', vim.log.levels.INFO)
     return
   end
   
   local themes = require('telescope.themes')
-  
-  -- Debug: print actual counts
-  vim.notify(string.format("Timeline items created: %d, snapshots in timeline: %d", #items, #require('traceback.core').timeline(bufnr).snapshots), vim.log.levels.INFO)
-  
+
+  -- Helper: choose the best buffer to restore into
+  local function resolve_target_buf(snapshot)
+    -- Prefer original buffer if still valid
+    if snapshot and snapshot.bufnr and vim.api.nvim_buf_is_valid(snapshot.bufnr) then
+      return snapshot.bufnr
+    end
+    -- Next, try to find a loaded buffer visiting the same file
+    local file = snapshot and snapshot.file
+    if file and file ~= '' then
+      for _, b in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(b) and vim.api.nvim_buf_get_name(b) == file then
+          return b
+        end
+      end
+    end
+    -- Fallback: current buffer
+    return cur_buf
+  end
+
   pickers.new(themes.get_ivy({
     -- Use ivy theme which handles large lists better
     layout_config = {
@@ -63,10 +82,26 @@ function M.timeline_picker()
     },
     sorter = conf.generic_sorter({}),
     results_title = string.format("Showing All %d Snapshots", #items),
-    previewer = require('telescope.previewers').new_buffer_previewer({
+    previewer = previewers.new_buffer_previewer({
       define_preview = function(self, entry)
         local s = entry.value.snapshot
         vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, s.lines)
+        -- Try to set an appropriate filetype for nicer highlighting in the preview
+        local ft = nil
+        if s.file and s.file ~= '' and vim.filetype and vim.filetype.match then
+          pcall(function()
+            ft = vim.filetype.match({ filename = s.file })
+          end)
+        end
+        if not ft then
+          -- fallback to current buffer's filetype
+          ft = vim.bo[cur_buf].filetype
+        end
+        if ft and ft ~= '' then
+          pcall(function()
+            vim.api.nvim_buf_set_option(self.state.bufnr, 'filetype', ft)
+          end)
+        end
       end,
     }),
     attach_mappings = function(prompt_bufnr, map)
@@ -74,8 +109,8 @@ function M.timeline_picker()
         local selection = action_state.get_selected_entry()
         if selection then
           local s = selection.value.snapshot
-          -- ensure we restore into the buffer that was snapshotted (fallback to current buffer)
-          local target_buf = (s and s.bufnr) and s.bufnr or vim.api.nvim_get_current_buf()
+          -- ensure we restore into a sensible target buffer
+          local target_buf = resolve_target_buf(s)
           local core = require('traceback.core')
           local restored_ok = core.restore(selection.value.idx, target_buf)
           if restored_ok then
@@ -92,6 +127,13 @@ function M.timeline_picker()
       map('n', '<CR>', function()
         restore()
         actions.close(prompt_bufnr)
+      end)
+      -- Optional: quick restore without closing picker
+      map('i', '<C-r>', function()
+        restore()
+      end)
+      map('n', '<C-r>', function()
+        restore()
       end)
       return true
     end,

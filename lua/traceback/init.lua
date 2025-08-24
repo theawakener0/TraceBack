@@ -7,7 +7,7 @@ local config = {
   },
   lenses = {
     code = true,
-    debug = true,
+  lsp = true,
     security = true,
     auto_render = true,
     max_annotations = 200, -- global cap on annotations per buffer
@@ -44,7 +44,7 @@ function M.setup(user)
     require('traceback.lenses').set_config(M._config.lenses)
     local enabled_lenses = {}
     if M._config.lenses.code then table.insert(enabled_lenses, '󰌵 Code') end
-    if M._config.lenses.debug then table.insert(enabled_lenses, '󰃤 Debug') end
+  if M._config.lenses.lsp then table.insert(enabled_lenses, '󰒡 LSP') end
     if M._config.lenses.security then table.insert(enabled_lenses, '󰌾 Security') end
     if #enabled_lenses > 0 then
       vim.notify('󰈙 TraceBack lenses active: ' .. table.concat(enabled_lenses, ', '), vim.log.levels.INFO)

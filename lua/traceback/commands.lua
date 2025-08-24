@@ -80,12 +80,6 @@ function M.setup(keymaps)
     desc = " 󰋽 Explain annotation at cursor"
   })
 
-  -- Debug lens quickfix integration
-  vim.api.nvim_create_user_command('TracebackQuickfixCaptures', function()
-    require('traceback.lenses.lens_debug').populate_quickfix_with_captures()
-  end, {
-    desc = " 󰌶 Populate quickfix with file:line captures from debug lens"
-  })
 
   require('traceback.lenses').setup_commands()
   -- register optional default keymaps (non-recursive, silent)
@@ -105,7 +99,7 @@ function M.setup(keymaps)
   map(keymaps.quick_fix or '<Leader>tf', function() vim.cmd('TracebackQuickFix') end)
   map(keymaps.explain or '<Leader>te', function() vim.cmd('TracebackExplain') end)
   map(keymaps.suggest or '<Leader>ts', function() vim.cmd('TracebackSuggestBuffer') end)
-  map(keymaps.quickfix_captures or '<Leader>tq', function() vim.cmd('TracebackQuickfixCaptures') end)
+  -- quickfix_captures mapping is removed as debug lens is disabled in favor of LSP
 end
 
 return M

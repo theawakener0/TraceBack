@@ -3,7 +3,7 @@ local M = {}
 local ns = vim.api.nvim_create_namespace('TracebackLenses')
 local cfg = {
   code = true,
-  debug = true,
+  lsp = true,
   security = true,
   auto_render = true,
   max_annotations = 200,
@@ -15,7 +15,7 @@ local utils = require('traceback.lenses.utils')
 
 local modules = {
   code = require('traceback.lenses.lens_code'),
-  debug = require('traceback.lenses.lens_debug'),
+  lsp = require('traceback.lenses.lens_lsp'),
   security = require('traceback.lenses.lens_security'),
 }
 
@@ -37,7 +37,7 @@ function M.render(bufnr, user_cfg)
   local to = botline + math.floor(cfg.scan_window/2)
   local total = 0
   if cfg.code then total = total + (modules.code.render(bufnr, ns, cfg, from, to) or 0) end
-  if cfg.debug then total = total + (modules.debug.render(bufnr, ns, cfg, from, to) or 0) end
+  if cfg.lsp then total = total + (modules.lsp.render(bufnr, ns, cfg, from, to) or 0) end
   if cfg.security then total = total + (modules.security.render(bufnr, ns, cfg, from, to) or 0) end
   return total
 end
@@ -59,11 +59,11 @@ function M.setup_commands()
   
   vim.api.nvim_create_user_command('TracebackLensesToggle', function(opts)
     local which = opts.args
-    local icons = { code = '󰌵', debug = '󰃤', security = '󰌾' }
+  local icons = { code = '󰌵', lsp = '󰒡', security = '󰌾' }
     local old_state = cfg[which]
     
     if which == 'code' then cfg.code = not cfg.code
-    elseif which == 'debug' then cfg.debug = not cfg.debug
+  elseif which == 'lsp' then cfg.lsp = not cfg.lsp
     elseif which == 'security' then cfg.security = not cfg.security
     end
     
@@ -73,8 +73,8 @@ function M.setup_commands()
     M.render()
   end, { 
     nargs = 1, 
-    complete = function() return {'code','debug','security'} end,
-    desc = " 󰒓 Toggle specific lens type - code/debug/security"
+  complete = function() return {'code','lsp','security'} end,
+  desc = " 󰒓 Toggle specific lens type - code/lsp/security"
   })
 
   -- interactive commands for security tuning
