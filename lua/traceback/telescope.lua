@@ -18,8 +18,11 @@ function M.timeline_items(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   local tl = require('traceback.core').timeline(bufnr)
   local items = {}
-  for i, s in ipairs(tl.snapshots) do
-    table.insert(items, { display = format_item(i, s), ordinal = i, idx = i, snapshot = s })
+  -- Reverse the order so newest snapshots (highest numbers) appear first
+  for i = #tl.snapshots, 1, -1 do
+    local s = tl.snapshots[i]
+    local display_idx = i -- Keep original index for restore
+    table.insert(items, { display = format_item(display_idx, s), ordinal = display_idx, idx = display_idx, snapshot = s })
   end
   return items
 end
@@ -41,13 +44,25 @@ function M.timeline_picker()
     return
   end
   
-  pickers.new({}, {
+  local themes = require('telescope.themes')
+  
+  -- Debug: print actual counts
+  vim.notify(string.format("Timeline items created: %d, snapshots in timeline: %d", #items, #require('traceback.core').timeline(bufnr).snapshots), vim.log.levels.INFO)
+  
+  pickers.new(themes.get_ivy({
+    -- Use ivy theme which handles large lists better
+    layout_config = {
+      height = 0.4,
+      preview_width = 0.6,
+    },
+  }), {
     prompt_title = '󰈙 TraceBack Timeline (' .. #items .. ' snapshots)',
     finder = finders.new_table {
       results = items,
       entry_maker = function(e) return { value = e, display = e.display, ordinal = tostring(e.ordinal) } end,
     },
     sorter = conf.generic_sorter({}),
+    results_title = string.format("Showing All %d Snapshots", #items),
     previewer = require('telescope.previewers').new_buffer_previewer({
       define_preview = function(self, entry)
         local s = entry.value.snapshot

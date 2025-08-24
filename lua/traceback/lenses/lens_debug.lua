@@ -66,6 +66,10 @@ local function get_debug_patterns(ft)
       { pattern = '\\blog\\.(Print|Printf|Println|Fatal|Panic)\\s*\\(', hl = 'DiagnosticInfo', icon = '󰌶', priority = 4, flags = '', capture = nil },
       { pattern = '\\bdefer\\s+', hl = 'DiagnosticInfo', icon = '󰋽', priority = 4, flags = '', capture = nil },
       { pattern = '\\bpanic\\s*\\(', hl = 'DiagnosticError', icon = '󰅚', priority = 1, flags = '', capture = nil },
+      { pattern = '\\bexec\\.Command\\s*\\(', hl = 'DiagnosticWarn', icon = '󰀪', priority = 2, flags = '', capture = nil },
+      { pattern = '\\b(if|for|switch)\\s+', hl = 'DiagnosticHint', icon = '󰘦', priority = 6, flags = '', capture = nil },
+      { pattern = '\\b(err\\s*!=\\s*nil)', hl = 'DiagnosticInfo', icon = '󰋽', priority = 3, flags = '', capture = nil },
+      { pattern = '\\b(return\\s+[^,]*err)', hl = 'DiagnosticInfo', icon = '󰋽', priority = 3, flags = '', capture = nil },
     },
   }
 

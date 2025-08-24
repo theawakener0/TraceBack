@@ -113,6 +113,20 @@ function M.setup_commands()
   vim.api.nvim_create_autocmd('CursorHold', { group = group, callback = function()
     if cfg.auto_render then pcall(M.render, vim.api.nvim_get_current_buf()) end
   end })
+  vim.api.nvim_create_autocmd('BufEnter', { group = group, callback = function(args)
+    if cfg.auto_render then 
+      vim.defer_fn(function()
+        pcall(M.render, args.buf)
+      end, 100)
+    end
+  end })
+  vim.api.nvim_create_autocmd('TextChanged', { group = group, callback = function()
+    if cfg.auto_render then 
+      vim.defer_fn(function()
+        pcall(M.render, vim.api.nvim_get_current_buf())
+      end, 500)
+    end
+  end })
 end
 
 return M
