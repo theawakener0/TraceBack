@@ -1,9 +1,24 @@
 local U = {}
 
+-- Return the visible viewport (topline, botline) with robust fallbacks
 function U.get_viewport()
-  local w = vim.api.nvim_get_current_win()
-  local info = vim.fn.getwininfo(w)[1]
-  return info.topline, info.botline
+  -- Try the fast path with guards
+  local ok, topline, botline = pcall(function()
+    local w = vim.api.nvim_get_current_win()
+    local info = vim.fn.getwininfo(w)
+    if type(info) == 'table' and info[1] and info[1].topline and info[1].botline then
+      return info[1].topline, info[1].botline
+    end
+    return nil, nil
+  end)
+  if ok and tonumber(topline) and tonumber(botline) then
+    return topline, botline
+  end
+
+  -- Fallback to window lines; ensure numbers
+  local tl = tonumber(vim.fn.line('w0')) or 1
+  local bl = tonumber(vim.fn.line('w$')) or vim.api.nvim_buf_line_count(0)
+  return tl, bl
 end
 
 function U.ts_available(bufnr, cfg)
