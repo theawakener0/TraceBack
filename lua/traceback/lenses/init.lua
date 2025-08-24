@@ -6,9 +6,26 @@ local cfg = {
   lsp = true,
   security = true,
   auto_render = true,
+  -- debounce timings (ms) per event
+  debounce_ms = 120,
+  event_debounce = {
+    DiagnosticChanged = 80,
+    TextChanged = 300,
+    WinScrolled = 120,
+    CursorHold = 0,
+    InsertLeave = 80,
+    BufEnter = 100,
+    LspAttach = 50,
+  },
   max_annotations = 200,
   scan_window = 400,
   treesitter = true,
+  -- lens specific options
+  lsp_max_per_line = 1,
+  lsp_truncate = 120,
+  lsp_show_codes = true,
+  lsp_show_source = false,
+  code_show_metrics = true, -- show params/LOC alongside complexity
 }
 
 local utils = require('traceback.lenses.utils')
@@ -21,6 +38,23 @@ local modules = {
 
 local function clear(bufnr)
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+end
+
+-- simple debounced scheduler to coalesce frequent events
+local uv = vim.loop
+local timer = uv.new_timer()
+local scheduled_buf = nil
+local function schedule_render(bufnr, delay)
+  if not cfg.auto_render then return end
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  delay = delay or cfg.debounce_ms or 120
+  scheduled_buf = bufnr
+  timer:stop()
+  timer:start(delay, 0, vim.schedule_wrap(function()
+    if scheduled_buf and vim.api.nvim_buf_is_loaded(scheduled_buf) then
+      pcall(M.render, scheduled_buf)
+    end
+  end))
 end
 
 function M.render(bufnr, user_cfg)
@@ -70,7 +104,7 @@ function M.setup_commands()
     local status = cfg[which] and 'enabled' or 'disabled'
     local icon = icons[which] or '󰒓'
     vim.notify(icon .. ' ' .. which:gsub('^%l', string.upper) .. ' lens ' .. status, vim.log.levels.INFO)
-    M.render()
+  M.render()
   end, { 
     nargs = 1, 
   complete = function() return {'code','lsp','security'} end,
@@ -108,24 +142,25 @@ function M.setup_commands()
   local group = vim.api.nvim_create_augroup('TracebackLensesAuto', {clear=true})
   vim.api.nvim_create_autocmd('DiagnosticChanged', { group = group, callback = function(args)
     local b = args.buf or vim.api.nvim_get_current_buf()
-    if vim.api.nvim_buf_is_loaded(b) then pcall(M.render, b) end
+    if vim.api.nvim_buf_is_loaded(b) then schedule_render(b, cfg.event_debounce.DiagnosticChanged) end
   end })
   vim.api.nvim_create_autocmd('CursorHold', { group = group, callback = function()
-    if cfg.auto_render then pcall(M.render, vim.api.nvim_get_current_buf()) end
+    schedule_render(vim.api.nvim_get_current_buf(), cfg.event_debounce.CursorHold)
   end })
   vim.api.nvim_create_autocmd('BufEnter', { group = group, callback = function(args)
-    if cfg.auto_render then 
-      vim.defer_fn(function()
-        pcall(M.render, args.buf)
-      end, 100)
-    end
+    schedule_render(args.buf, cfg.event_debounce.BufEnter)
   end })
   vim.api.nvim_create_autocmd('TextChanged', { group = group, callback = function()
-    if cfg.auto_render then 
-      vim.defer_fn(function()
-        pcall(M.render, vim.api.nvim_get_current_buf())
-      end, 500)
-    end
+    schedule_render(vim.api.nvim_get_current_buf(), cfg.event_debounce.TextChanged)
+  end })
+  vim.api.nvim_create_autocmd('WinScrolled', { group = group, callback = function()
+    schedule_render(vim.api.nvim_get_current_buf(), cfg.event_debounce.WinScrolled)
+  end })
+  vim.api.nvim_create_autocmd('InsertLeave', { group = group, callback = function()
+    schedule_render(vim.api.nvim_get_current_buf(), cfg.event_debounce.InsertLeave)
+  end })
+  vim.api.nvim_create_autocmd('LspAttach', { group = group, callback = function(args)
+    if args.buf then schedule_render(args.buf, cfg.event_debounce.LspAttach) end
   end })
 end
 

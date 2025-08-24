@@ -22,6 +22,32 @@ local function ts_render(bufnr, ns, cfg, from, to)
     end
     local name = name_node and U.get_node_text(name_node, bufnr) or 'function'
     local sr = fn_node and select(1, fn_node:range()) or (name_node and select(1, name_node:range()) or (from-1))
+    -- estimate parameters and LOC if enabled
+    local params_count, loc = nil, nil
+    if cfg.code_show_metrics and fn_node then
+      local sr0, _, er0, _ = fn_node:range()
+      loc = (er0 - sr0 + 1)
+      -- try to find parameter list child
+      for child in fn_node:iter_children() do
+        local t = child:type()
+        if t:find('parameter') or t:find('parameters') or t:find('parameter_list') then
+          local txt = U.get_node_text(child, bufnr)
+          if txt then
+            local count = 0
+            -- count commas + 1 if non-empty between parens
+            local inside = txt:match('%((.*)%)') or txt
+            inside = inside and inside:gsub('%s', '') or ''
+            if inside ~= '' then
+              for _ in inside:gmatch(',') do count = count + 1 end
+              params_count = count + 1
+            else
+              params_count = 0
+            end
+          end
+          break
+        end
+      end
+    end
     local function count_complexity(n, depth)
       if not n or depth > 1000 then return 0 end
       local t = n:type()
@@ -33,8 +59,13 @@ local function ts_render(bufnr, ns, cfg, from, to)
     end
     local complexity = 1 + (fn_node and count_complexity(fn_node, 0) or 0)
     local complexity_icon = complexity > 10 and '󰝣' or (complexity > 5 and '󰝤' or '󰝥')
+    local pieces = { string.format('%s 󰌵 %s (C%02d)', complexity_icon, name, complexity) }
+    if cfg.code_show_metrics then
+      if params_count ~= nil then table.insert(pieces, string.format('args:%d', params_count)) end
+      if loc ~= nil then table.insert(pieces, string.format('LOC:%d', loc)) end
+    end
     vim.api.nvim_buf_set_extmark(bufnr, ns, sr, 0, {
-      virt_text = {{string.format('%s 󰌵 %s (C%02d)', complexity_icon, name, complexity), 'Comment'}},
+      virt_text = {{table.concat(pieces, '  '), 'Comment'}},
       virt_text_pos = 'eol',
     })
     anno = anno + 1

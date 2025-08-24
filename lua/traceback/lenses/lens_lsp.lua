@@ -62,22 +62,27 @@ function M.render(bufnr, ns, cfg, from, to)
   end
 
   -- Render per-line messages at end-of-line
-  local max_per_line = 1  -- show the top severity message per line
+  local max_per_line = (cfg and cfg.lsp_max_per_line) or 1  -- show the top N severity messages per line
   for lnum, list in pairs(per_line) do
+    if anno >= (cfg and cfg.max_annotations or math.huge) then break end
     table.sort(list, function(a, b)
       return (a.severity or vim.diagnostic.severity.HINT) < (b.severity or vim.diagnostic.severity.HINT)
     end)
     local shown = 0
     for _, d in ipairs(list) do
+      if anno >= (cfg and cfg.max_annotations or math.huge) then break end
       if shown >= max_per_line then break end
       local sev = severity_map[d.severity] or severity_map[vim.diagnostic.severity.HINT]
-      local msg = d.message or ''
-      local code = (type(d.code) == 'string' and d.code) or (type(d.user_data) == 'table' and d.user_data.lsp and d.user_data.lsp.code) or nil
-      local text = msg
-      if code and code ~= '' then
-        text = string.format('%s [%s]', text, code)
-      end
-      text = truncate(text:gsub('%s+', ' '), 120)
+      local msg = (d.message or '')
+      local code = (type(d.code) == 'string' and d.code)
+                  or (type(d.user_data) == 'table' and d.user_data.lsp and d.user_data.lsp.code)
+                  or nil
+      local src = d.source or (d.user_data and d.user_data.lsp and d.user_data.lsp.source) or nil
+      local parts = { msg }
+      if (cfg and cfg.lsp_show_codes) and code and code ~= '' then table.insert(parts, string.format('[%s]', code)) end
+      if (cfg and cfg.lsp_show_source) and src and src ~= '' then table.insert(parts, string.format('(%s)', src)) end
+      local text = table.concat(parts, ' ')
+      text = truncate(text:gsub('%s+', ' '), (cfg and cfg.lsp_truncate) or 120)
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum - 1, 0, {
         virt_text = {{' ' .. sev.icon .. ' ' .. text, sev.hl}},
         virt_text_pos = 'eol',

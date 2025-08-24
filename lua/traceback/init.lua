@@ -10,9 +10,27 @@ local config = {
   lsp = true,
     security = true,
     auto_render = true,
+    -- debounce and event tuning
+    debounce_ms = 120,
+    event_debounce = {
+      DiagnosticChanged = 80,
+      TextChanged = 300,
+      WinScrolled = 120,
+      CursorHold = 0,
+      InsertLeave = 80,
+      BufEnter = 100,
+      LspAttach = 50,
+    },
     max_annotations = 200, -- global cap on annotations per buffer
     scan_window = 400,     -- lines to scan around viewport for heavy work
     treesitter = true,     -- use Treesitter when available for better lenses
+    -- lsp lens customization
+    lsp_max_per_line = 1,
+    lsp_truncate = 120,
+    lsp_show_codes = true,
+    lsp_show_source = false,
+    -- code lens customization
+    code_show_metrics = true, -- show params/LOC alongside complexity
   },
   -- sensible default keymaps; users can override in setup()
   keymaps = {

@@ -122,7 +122,33 @@ The plugin provides rich visual feedback:
 ```lua
 require('traceback').setup({
   snapshot = { max_snapshots = 200, throttle_ms = 500 },
-  lenses = { code = true, lsp = true, security = true, auto_render = true, max_annotations = 200, scan_window = 400, treesitter = true },
+  lenses = {
+    code = true,
+    lsp = true,
+    security = true,
+    auto_render = true,
+    -- debounce and event tuning for auto-render
+    debounce_ms = 120,
+    event_debounce = {
+      DiagnosticChanged = 80,
+      TextChanged = 300,
+      WinScrolled = 120,
+      CursorHold = 0,
+      InsertLeave = 80,
+      BufEnter = 100,
+      LspAttach = 50,
+    },
+    max_annotations = 200,
+    scan_window = 400,
+    treesitter = true,
+    -- LSP lens options
+    lsp_max_per_line = 1,
+    lsp_truncate = 120,
+    lsp_show_codes = true,
+    lsp_show_source = false,
+    -- Code lens options
+    code_show_metrics = true, -- show params/LOC alongside complexity
+  },
   -- customize default keymaps:
   keymaps = {
     timeline = '<Leader>tt',
@@ -134,6 +160,22 @@ require('traceback').setup({
   telescope = true,
 })
 ```
+
+### Auto-render behavior
+
+TraceBack coalesces frequent events and re-renders lenses on:
+- DiagnosticChanged, TextChanged, CursorHold, BufEnter, WinScrolled, InsertLeave, and LspAttach
+
+You can tune per-event debounce with `lenses.event_debounce` and a fallback `lenses.debounce_ms`.
+
+### LSP lens options
+- `lsp_max_per_line`: show up to N diagnostics per line (default 1)
+- `lsp_truncate`: max characters for a message before adding an ellipsis (default 120)
+- `lsp_show_codes`: append diagnostic codes like [unused-var] when provided (default true)
+- `lsp_show_source`: append diagnostic source like (eslint) (default false)
+
+### Code lens options
+- `code_show_metrics`: include parameter count and function LOC when Treesitter is available (default true)
 
 ## Code Actions & Systematic Suggestions
 
