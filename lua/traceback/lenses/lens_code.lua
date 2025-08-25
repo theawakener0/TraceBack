@@ -13,7 +13,9 @@ local function ts_render(bufnr, ns, cfg, from, to)
   if not tree then return 0 end
   local root = tree:root()
   local anno = 0
-  for match in q:iter_matches(root, bufnr, from-1, to) do
+  -- iter_matches returns (pattern_idx, match_tbl, metadata); capture the table
+  for _, match, _ in q:iter_matches(root, bufnr, from-1, to) do
+    if type(match) ~= 'table' then goto continue end
     local fn_node, name_node
     for id, node in pairs(match) do
       local cap = q.captures[id]
@@ -69,7 +71,8 @@ local function ts_render(bufnr, ns, cfg, from, to)
       virt_text_pos = 'eol',
     })
     anno = anno + 1
-    if anno >= cfg.max_annotations then break end
+  if anno >= cfg.max_annotations then break end
+  ::continue::
   end
   return anno
 end
