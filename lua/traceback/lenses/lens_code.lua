@@ -1,4 +1,5 @@
 local U = require('traceback.lenses.utils')
+local unpack = table.unpack or unpack
 
 local M = {}
 
@@ -80,6 +81,10 @@ end
 local function regex_render(bufnr, ns, cfg, from, to)
   local ft = vim.bo[bufnr].filetype
   local lines = vim.api.nvim_buf_get_lines(bufnr, from-1, to, false)
+  -- Precompute string/comment ranges to avoid false positives inside them
+  local sc_ranges = {}
+  local ok_sc, ranges = pcall(U.ts_sc_ranges, bufnr, ft, from, to)
+  if ok_sc and type(ranges) == 'table' then sc_ranges = ranges end
   local func_patterns = {
     c = {
       '^%s*%w+%s+([%w%.%:_]+)%s*%(', -- type func_name(
@@ -145,8 +150,15 @@ local function regex_render(bufnr, ns, cfg, from, to)
   for i, line in ipairs(lines) do
     local name = nil
     for _, pat in ipairs(pats) do
-      name = line:match(pat)
-      if name then break end
+      local s = line:find(pat)
+      if s then
+        -- Check if start col is within string/comment ranges; skip if so
+        local row0 = (from + i - 2)
+        if not U.col_in_ranges(row0, s - 1, sc_ranges) then
+          name = line:match(pat)
+          if name then break end
+        end
+      end
     end
     
     if name then

@@ -77,6 +77,8 @@ All commands now include descriptive help text with visual icons:
 - ⏪ `:TracebackRestore {idx}` – Restore buffer to snapshot index (supports tab completion)
 - ▶️ `:TracebackReplay {from} {to} {delay_ms}` – Replay snapshot sequence with animation
 - 🔍 `:TracebackLenses` – Render all active lenses with annotation count
+- 🧼 `:TracebackLensesClear` – Clear all lens annotations in the current buffer
+- 🩺 `:TracebackLensesHealth` – Run a lenses health check and show diagnostics
 - ⚙️ `:TracebackLensesToggle {code|lsp|security}` – Toggle specific lens types with status feedback
 - 🔒 `:TracebackSecurityAllow {pattern}` – Add pattern to security allowlist
 - ⚙️ `:TracebackSecuritySet {key} {value}` – Configure lens settings
