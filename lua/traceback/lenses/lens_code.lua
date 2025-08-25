@@ -23,41 +23,63 @@ local function ts_render(bufnr, ns, cfg, from, to)
       if cap == 'fn' then fn_node = node end
       if cap == 'name' then name_node = node end
     end
-    local name = name_node and U.get_node_text(name_node, bufnr) or 'function'
-    local sr = fn_node and select(1, fn_node:range()) or (name_node and select(1, name_node:range()) or (from-1))
+  -- Normalize captures: when a capture repeats, Treesitter can return a list
+  if type(fn_node) == 'table' then fn_node = fn_node[1] end
+  if type(name_node) == 'table' then name_node = name_node[1] end
+    local name = (name_node and U.get_node_text(name_node, bufnr)) or 'function'
+    local sr = (function()
+      if fn_node then
+        local ok, srow = pcall(function() return select(1, fn_node:range()) end)
+        if ok and type(srow) == 'number' then return srow end
+      end
+      if name_node then
+        local ok, srow = pcall(function() return select(1, name_node:range()) end)
+        if ok and type(srow) == 'number' then return srow end
+      end
+      return from - 1
+    end)()
     -- estimate parameters and LOC if enabled
     local params_count, loc = nil, nil
     if cfg.code_show_metrics and fn_node then
-      local sr0, _, er0, _ = fn_node:range()
-      loc = (er0 - sr0 + 1)
+      local ok_range, sr0, sc0, er0, ec0 = pcall(function() return fn_node:range() end)
+      if ok_range and type(sr0) == 'number' and type(er0) == 'number' then
+        loc = (er0 - sr0 + 1)
+      end
       -- try to find parameter list child
-      for child in fn_node:iter_children() do
-        local t = child:type()
-        if t:find('parameter') or t:find('parameters') or t:find('parameter_list') then
-          local txt = U.get_node_text(child, bufnr)
-          if txt then
-            local count = 0
-            -- count commas + 1 if non-empty between parens
-            local inside = txt:match('%((.*)%)') or txt
-            inside = inside and inside:gsub('%s', '') or ''
-            if inside ~= '' then
-              for _ in inside:gmatch(',') do count = count + 1 end
-              params_count = count + 1
-            else
-              params_count = 0
+      local ok_iter, iter = pcall(function() return fn_node:iter_children() end)
+      if ok_iter and type(iter) == 'function' then
+        for child in iter do
+          local ok_type, t = pcall(function() return child:type() end)
+          if ok_type and type(t) == 'string' and (t:find('parameter') or t:find('parameters') or t:find('parameter_list')) then
+            local txt = U.get_node_text(child, bufnr)
+            if txt then
+              local count = 0
+              -- count commas + 1 if non-empty between parens
+              local inside = txt:match('%((.*)%)') or txt
+              inside = inside and inside:gsub('%s', '') or ''
+              if inside ~= '' then
+                for _ in inside:gmatch(',') do count = count + 1 end
+                params_count = count + 1
+              else
+                params_count = 0
+              end
             end
+            break
           end
-          break
         end
       end
     end
     local function count_complexity(n, depth)
       if not n or depth > 1000 then return 0 end
-      local t = n:type()
+      local ok_type, t = pcall(function() return n:type() end)
+      if not ok_type or type(t) ~= 'string' then return 0 end
       local incr = 0
       if t:find('if') or t:find('while') or t:find('for') or t:find('case') or t:find('switch') or t:find('elsif') then incr = 1 end
       local total = incr
-      for child in n:iter_children() do total = total + count_complexity(child, depth+1) end
+      local ok_iter, iter = pcall(function() return n:iter_children() end)
+      if ok_iter and type(iter) == 'function' then
+        for child in iter do total = total + count_complexity(child, depth+1) end
+      end
       return total
     end
     local complexity = 1 + (fn_node and count_complexity(fn_node, 0) or 0)
