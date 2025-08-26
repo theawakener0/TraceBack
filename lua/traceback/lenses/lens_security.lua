@@ -2,6 +2,27 @@ local U = require('traceback.lenses.utils')
 
 local M = {}
 
+-- Configuration for enhanced security analysis
+local security_config = {
+  auto_render_enabled = true,
+  smart_filtering = true,
+  context_analysis = true,
+  confidence_threshold = 0.6,
+  max_auto_annotations = 150,
+  cooldown_ms = 1500,
+  priority_patterns = {
+    "eval", "exec", "system", "shell", "command", "injection",
+    "password", "secret", "key", "token", "private"
+  }
+}
+
+-- Auto-rendering state management
+local auto_render_state = {
+  last_render_time = {},
+  pending_renders = {},
+  active_timers = {}
+}
+
 -- improved helpers: Shannon entropy and stronger secret heuristics
 
 local function shannon_entropy(s)
@@ -92,6 +113,258 @@ local function looks_like_secret(matched, cfg)
     if H >= min_entropy then return true end
   end
 
+  return false
+end
+
+-- Enhanced auto-rendering with intelligent triggers
+function M.setup_auto_rendering(bufnr, cfg)
+  cfg = cfg or {}
+  
+  if not security_config.auto_render_enabled then
+    return
+  end
+  
+  local group_name = 'TraceBackSecurityAutoRender_' .. bufnr
+  vim.api.nvim_create_augroup(group_name, { clear = true })
+  
+  -- Smart triggers for auto-rendering
+  local triggers = {
+    {
+      events = { 'DiagnosticChanged' },
+      debounce = 800,
+      priority = 'high'
+    },
+    {
+      events = { 'InsertLeave' },
+      debounce = 500, 
+      priority = 'high'
+    },
+    {
+      events = { 'BufEnter', 'LspAttach' },
+      debounce = 300,
+      priority = 'high'
+    },
+    {
+      events = { 'TextChanged', 'TextChangedI' },
+      debounce = 2000,
+      priority = 'medium'
+    },
+    {
+      events = { 'CursorHold' },
+      debounce = 1000,
+      priority = 'low'
+    }
+  }
+  
+  for _, trigger in ipairs(triggers) do
+    vim.api.nvim_create_autocmd(trigger.events, {
+      group = group_name,
+      buffer = bufnr,
+      callback = function(args)
+        M._schedule_auto_render(bufnr, trigger.priority, trigger.debounce, args.event)
+      end
+    })
+  end
+end
+
+-- Smart auto-render scheduler
+function M._schedule_auto_render(bufnr, priority, debounce_ms, event_type)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  
+  -- Check if we should render based on smart heuristics
+  if not U.should_auto_render_security(bufnr, event_type) then
+    return
+  end
+  
+  local buffer_key = tostring(bufnr)
+  
+  -- Cancel any existing timer for this buffer
+  if auto_render_state.active_timers[buffer_key] then
+    auto_render_state.active_timers[buffer_key]:stop()
+    auto_render_state.active_timers[buffer_key] = nil
+  end
+  
+  -- Create new timer with appropriate debounce
+  auto_render_state.active_timers[buffer_key] = vim.defer_fn(function()
+    if vim.api.nvim_buf_is_valid(bufnr) then
+      M._perform_auto_render(bufnr, priority, event_type)
+    end
+    auto_render_state.active_timers[buffer_key] = nil
+  end, debounce_ms)
+end
+
+-- Perform intelligent auto-rendering
+function M._perform_auto_render(bufnr, priority, event_type)
+  local current_time = os.clock()
+  local buffer_key = tostring(bufnr)
+  
+  -- Respect cooldown period
+  local last_render = auto_render_state.last_render_time[buffer_key]
+  if last_render and (current_time - last_render) < (security_config.cooldown_ms / 1000) then
+    return
+  end
+  
+  -- Get viewport with context for smart rendering
+  local from, to, visible_from, visible_to = U.get_viewport_with_context(100)
+  
+  -- Check if rendering is performance-safe
+  local should_render, reason = U.should_render_range(bufnr, from, to, security_config.max_auto_annotations)
+  if not should_render then
+    vim.schedule(function()
+      vim.notify("TraceBack security auto-render skipped: " .. (reason or "performance"), vim.log.levels.DEBUG)
+    end)
+    return
+  end
+  
+  -- Perform the render with enhanced context
+  local annotations = M._render_with_context_analysis(bufnr, from, to, priority)
+  
+  -- Update state
+  auto_render_state.last_render_time[buffer_key] = current_time
+  
+  -- Provide user feedback for significant findings
+  if annotations and annotations > 0 then
+    vim.schedule(function()
+      if priority == 'high' and annotations >= 5 then
+        vim.notify(string.format("󰯳 TraceBack: %d security issues detected", annotations), vim.log.levels.WARN)
+      end
+    end)
+  end
+end
+
+-- Enhanced rendering with context analysis
+function M._render_with_context_analysis(bufnr, from, to, priority)
+  local ns = vim.api.nvim_create_namespace('TracebackSecurityEnhanced')
+  
+  -- Clear previous annotations in range
+  vim.api.nvim_buf_clear_namespace(bufnr, ns, from - 1, to)
+  
+  local cfg = security_config
+  local max_anno = cfg.max_auto_annotations or 150
+  local lines = vim.api.nvim_buf_get_lines(bufnr, from-1, to, false)
+  local ft = U.get_effective_language(bufnr)
+  local rules = insecure_by_ft[ft] or insecure_by_ft.default
+  local sc_ranges = (cfg.treesitter and U.ts_available(bufnr, cfg)) and U.ts_sc_ranges(bufnr, ft, from, to) or {}
+  local anno = 0
+  local severity_score = { DiagnosticError = 3, DiagnosticWarn = 2, DiagnosticInfo = 1 }
+  local min_score = cfg.confidence_threshold and (cfg.confidence_threshold * 3) or 2
+  
+  for i, line in ipairs(lines) do
+    local line_nr = from + i - 2
+    
+    for _, r in ipairs(rules) do
+      local s, e = line:find(r.pat)
+      if s and not U.col_in_ranges(line_nr, s-1, sc_ranges) then
+        local matched = line:sub(s, e)
+        
+        -- Enhanced context analysis
+        local context = cfg.context_analysis and U.analyze_security_context(bufnr, line_nr + 1, r.pat, matched) or {}
+        
+        -- Base score from severity
+        local base = severity_score[r.hl] or 1
+        
+        -- Context-based confidence boost
+        local context_boost = context.confidence_modifiers or 0
+        
+        -- Secret heuristic bonus for token-like findings
+        local secret_ok = false
+        if r.msg:lower():match('key') or r.msg:lower():match('secret') or r.msg:lower():match('token') or r.pat:match('AKIA') or r.pat:match('xox') or r.pat:match('JWT') then
+          secret_ok = looks_like_secret(matched, cfg)
+        end
+        local secret_bonus = secret_ok and (cfg.secret_bonus or 2) or 0
+        
+        -- Priority pattern boost
+        local priority_boost = 0
+        for _, priority_pattern in ipairs(security_config.priority_patterns) do
+          if r.msg:lower():match(priority_pattern) or matched:lower():match(priority_pattern) then
+            priority_boost = 0.5
+            break
+          end
+        end
+        
+        local final_score = base + context_boost + secret_bonus + priority_boost
+        
+        -- Smart filtering based on configuration
+        if cfg.smart_filtering then
+          -- Skip low-confidence findings in low-priority renders
+          if priority == 'low' and final_score < (min_score + 0.5) then
+            goto continue
+          end
+          
+          -- Enhanced allowlist checking
+          local skip = M._check_enhanced_allowlist(matched, r, context)
+          if skip then goto continue end
+        end
+        
+        if final_score >= min_score then
+          -- Enhanced annotation with context info
+          local virt_text = {'󰯳 '..r.msg, r.hl}
+          
+          -- Add context indicators
+          if context.in_function and context.function_name then
+            virt_text[1] = virt_text[1] .. string.format(" [in %s()]", context.function_name)
+          end
+          
+          if context.in_loop then
+            virt_text[1] = virt_text[1] .. " [⟲ loop]"
+          end
+          
+          -- Add confidence indicator
+          if secret_ok then
+            virt_text[1] = virt_text[1] .. " [󰓎 high confidence]"
+          end
+          
+          vim.api.nvim_buf_set_extmark(bufnr, ns, line_nr, s-1, { 
+            end_col = e, 
+            hl_group = r.hl,
+            priority = math.floor(final_score * 10) -- Higher priority for more confident findings
+          })
+          vim.api.nvim_buf_set_extmark(bufnr, ns, line_nr, 0, {
+            virt_text = {virt_text}, 
+            virt_text_pos = 'eol',
+            priority = math.floor(final_score * 10)
+          })
+          anno = anno + 1
+          if anno >= max_anno then break end
+        end
+        ::continue::
+      end
+    end
+    if anno >= max_anno then break end
+  end
+  
+  return anno
+end
+
+-- Enhanced allowlist checking with context
+function M._check_enhanced_allowlist(matched, rule, context)
+  -- Check project allowlist
+  for _, p in ipairs(project_allowlist) do
+    if matched:match(p) then 
+      return true 
+    end
+  end
+  
+  -- Context-based smart filtering
+  if context.function_name then
+    -- Skip common test function patterns
+    local test_patterns = { "test_", "spec_", "_test", "_spec", "mock_", "stub_" }
+    for _, pattern in ipairs(test_patterns) do
+      if context.function_name:lower():match(pattern) then
+        return true
+      end
+    end
+  end
+  
+  -- Skip very common development patterns in specific contexts
+  if rule.msg:match("debug") or rule.msg:match("log") then
+    if context.function_name and context.function_name:lower():match("debug") then
+      return true
+    end
+  end
+  
   return false
 end
 
@@ -712,37 +985,56 @@ function M.render(bufnr, ns, cfg, from, to)
   local anno = 0
   local severity_score = { DiagnosticError = 3, DiagnosticWarn = 2, DiagnosticInfo = 1 }
   local min_score = (cfg and cfg.min_issue_score) or 2
-  -- taint helpers: lightweight Treesitter-based check for flow to sinks
-  local function taint_boost(line_nr, col_s, col_e)
+  
+  -- Enhanced taint analysis with smarter heuristics
+  local function taint_boost(line_nr, col_s, col_e, pattern_info)
     if not (cfg and cfg.taint_enabled and U.ts_available(bufnr, cfg)) then return 0 end
-    -- simple heuristic: get parser and search for function call nodes that include this range
-    local ok, parser = pcall(vim.treesitter.get_parser, bufnr, ft)
-    if not ok then return 0 end
-    local tree = parser:parse()[1]
-    if not tree then return 0 end
-    local root = tree:root()
-    local q_text = [[
-      (call_expression function: (_) @fn args: (argument_list (identifier) @arg) )
-      (call_expression function: (_) @fn args: (argument_list (string) @arg) )
-      (assignment left: (identifier) @lhs right: (_) @rhs)
-    ]]
-    -- parse query best-effort; this is generic and may return nil for unsupported fts
-    local okq, q = pcall(vim.treesitter.query.parse, ft, q_text)
-    if not okq or not q then return 0 end
-    for id, node in q:iter_captures(root, bufnr, from-1, to) do
-      local name = q.captures[id]
-      if name == 'arg' or name == 'lhs' then
-        local sr, sc, er, ec = node:range()
-        if line_nr-1 >= sr and line_nr-1 <= er then
-          -- if ranges overlap with matched span, consider it tainted flow to a sink
-          if not (col_e < sc or col_s > ec) then
-            return (cfg.taint_boost or 2)
+    
+    local context = U.analyze_security_context(bufnr, line_nr, pattern_info.pat, lines[line_nr - from + 1])
+    local boost = 0
+    
+    -- Function context boost
+    if context.in_function then
+      boost = boost + 0.1
+      
+      -- Higher boost for certain function types
+      if context.function_name then
+        local sensitive_func_patterns = { "auth", "login", "password", "secret", "token", "key", "encrypt", "decrypt" }
+        for _, pattern in ipairs(sensitive_func_patterns) do
+          if context.function_name:lower():match(pattern) then
+            boost = boost + 0.2
+            break
           end
         end
       end
     end
-    return 0
+    
+    -- Loop context boost (security issues in loops are often more severe)
+    if context.in_loop then
+      boost = boost + 0.15
+    end
+    
+    -- Variable usage analysis boost
+    if context.variable_context and next(context.variable_context) then
+      for var_name, usages in pairs(context.variable_context) do
+        local has_assignment = false
+        local has_function_call = false
+        
+        for _, usage in ipairs(usages) do
+          if usage.is_assignment then has_assignment = true end
+          if usage.is_function_call then has_function_call = true end
+        end
+        
+        -- Boost if variable is both assigned and used in function calls
+        if has_assignment and has_function_call then
+          boost = boost + 0.1
+        end
+      end
+    end
+    
+    return boost
   end
+  
   for i, line in ipairs(lines) do
     for _, r in ipairs(rules) do
       local s, e = line:find(r.pat)
@@ -756,19 +1048,40 @@ function M.render(bufnr, ns, cfg, from, to)
           secret_ok = looks_like_secret(matched, cfg)
         end
         local secret_bonus = secret_ok and (cfg.secret_bonus or 2) or 0
-        local taint_bonus = taint_boost(from+i-1, s-1, e) or 0
+        local taint_bonus = taint_boost(from+i-1, s-1, e, r) or 0
         local score = base + secret_bonus + taint_bonus
-        -- consult project allowlist (string patterns)
-        local skip = false
-        for _, p in ipairs(project_allowlist) do
-          if matched:match(p) then skip = true; break end
-        end
+        
+        -- Enhanced allowlist checking
+        local skip = M._check_enhanced_allowlist(matched, r, {})
         if skip then goto continue end
 
         if score >= min_score then
-          vim.api.nvim_buf_set_extmark(bufnr, ns, (from+i-2), s-1, { end_col = e, hl_group = r.hl })
+          -- Enhanced visualization with confidence indicators
+          local hl_group = r.hl
+          if secret_ok then
+            -- Use a more prominent highlight for high-confidence secrets
+            hl_group = "DiagnosticError"
+          end
+          
+          vim.api.nvim_buf_set_extmark(bufnr, ns, (from+i-2), s-1, { 
+            end_col = e, 
+            hl_group = hl_group,
+            priority = math.floor(score * 10)
+          })
+          
+          -- Enhanced virtual text with context
+          local virt_text = {'󰯳 '..r.msg, hl_group}
+          if secret_ok then
+            virt_text[1] = virt_text[1] .. " [󰓎 high confidence]"
+          end
+          if taint_bonus > 0.2 then
+            virt_text[1] = virt_text[1] .. " [󰔶 high risk context]"
+          end
+          
           vim.api.nvim_buf_set_extmark(bufnr, ns, (from+i-2), 0, {
-            virt_text = {{'󰌾 '..r.msg, r.hl}}, virt_text_pos = 'eol'
+            virt_text = {virt_text}, 
+            virt_text_pos = 'eol',
+            priority = math.floor(score * 10)
           })
           anno = anno + 1
           if anno >= max_anno then break end
@@ -779,6 +1092,43 @@ function M.render(bufnr, ns, cfg, from, to)
     if anno >= max_anno then break end
   end
   return anno
+end
+
+-- Enhanced configuration management
+function M.set_config(user_cfg)
+  if not user_cfg then return end
+  for k, v in pairs(user_cfg) do 
+    security_config[k] = v 
+  end
+end
+
+-- Auto-render enablement
+function M.enable_auto_render(bufnr)
+  security_config.auto_render_enabled = true
+  if bufnr then
+    M.setup_auto_rendering(bufnr, security_config)
+  end
+end
+
+function M.disable_auto_render(bufnr)
+  security_config.auto_render_enabled = false
+  if bufnr then
+    local group_name = 'TraceBackSecurityAutoRender_' .. bufnr
+    pcall(vim.api.nvim_del_augroup_by_name, group_name)
+  end
+end
+
+-- Public API for manual triggering
+function M.trigger_smart_render(bufnr, priority)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  priority = priority or 'medium'
+  
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return 0
+  end
+  
+  local from, to = U.get_viewport_with_context(200)
+  return M._render_with_context_analysis(bufnr, from, to, priority)
 end
 
 return M

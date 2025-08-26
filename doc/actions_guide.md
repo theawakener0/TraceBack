@@ -27,9 +27,9 @@ require('traceback').setup({
 ### 1. Automatic Detection
 - Open any code file
 - TraceBack automatically scans and highlights issues with lenses
-- Security issues appear with 🔒 icon
-- Complexity issues appear with 💡 icon
-- Performance issues appear with ⚡ icon
+- Security issues appear with 󰯳 icon
+- Complexity issues appear with 󰗮 icon
+- Performance issues appear with 󰃮 icon
 
 ### 2. View Actions at Cursor
 ```

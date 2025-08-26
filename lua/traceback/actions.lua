@@ -350,15 +350,15 @@ function M._format_suggestion_message(suggestion)
   local message = suggestion.description
   
   if suggestion.confidence then
-    message = message .. string.format("\n\n📊 Confidence: %.0f%%", suggestion.confidence * 100)
+    message = message .. string.format("\n\n󰑭 Confidence: %.0f%%", suggestion.confidence * 100)
   end
   
   if suggestion.impact then
-    message = message .. string.format("\n🎯 Impact: %s", suggestion.impact)
+    message = message .. string.format("\n󰓎 Impact: %s", suggestion.impact)
   end
   
   if suggestion.suggestion then
-    message = message .. "\n\n💡 Suggestion:\n" .. suggestion.suggestion
+    message = message .. "\n\n󰌶 Suggestion:\n" .. suggestion.suggestion
   end
   
   if suggestion.cwe then
@@ -484,7 +484,21 @@ local patterns_by_ft = {
         { pat = 'http%.ListenAndServe%f[^%w]%(', msg = 'HTTP listener without TLS', hl = 'DiagnosticWarn' },
         { pat = 'template%.HTML%f[^%w]%(', msg = 'template.HTML (XSS sink)', hl = 'DiagnosticWarn' },
         { pat = 'md5%.New%f[^%w]%(', msg = 'MD5 used (weak hash)', hl = 'DiagnosticWarn' },
-        { pat = 'sha1%.New%f[^%w]%(', msg = 'SHA1 used (weak hash)', hl = 'DiagnosticWarn' }
+        { pat = 'sha1%.New%f[^%w]%(', msg = 'SHA1 used (weak hash)', hl = 'DiagnosticWarn' },
+        { pat = 'sql%.Query%f[^%w]%(', msg = 'SQL query (potential injection)', hl = 'DiagnosticError' },
+        { pat = 'sql%.Exec%f[^%w]%(', msg = 'SQL exec (potential injection)', hl = 'DiagnosticError' },
+        { pat = 'fmt%.Sprintf%f[^%w]%(.*%%%s', msg = 'fmt.Sprintf with user input (format injection)', hl = 'DiagnosticWarn' },
+        { pat = 'os%.Getenv%f[^%w]%(', msg = 'Environment variable access (audit usage)', hl = 'DiagnosticInfo' },
+        { pat = 'ioutil%.WriteFile%f[^%w]%(.*0777', msg = 'File created with overly permissive mode', hl = 'DiagnosticWarn' },
+        { pat = 'net%.Dial%f[^%w]%(', msg = 'Network connection without TLS', hl = 'DiagnosticWarn' },
+        { pat = 'crypto/rand%.Read%f[^%w]%(', msg = 'Random number generation (ensure proper error handling)', hl = 'DiagnosticInfo' },
+        { pat = 'unsafe%.Pointer%f[^%w]', msg = 'unsafe.Pointer usage (memory safety risk)', hl = 'DiagnosticWarn' },
+        { pat = 'reflect%.ValueOf%f[^%w]%(', msg = 'Reflection usage (performance and security implications)', hl = 'DiagnosticInfo' },
+        { pat = 'strconv%.Atoi%f[^%w]%(', msg = 'strconv.Atoi without error handling', hl = 'DiagnosticWarn' },
+        { pat = 'json%.Unmarshal%f[^%w]%(', msg = 'JSON unmarshal (validate input and handle errors)', hl = 'DiagnosticInfo' },
+        { pat = 'http%.Get%f[^%w]%(', msg = 'HTTP GET without timeout or TLS verification', hl = 'DiagnosticWarn' },
+        { pat = 'log%.Fatal%f[^%w]%(', msg = 'log.Fatal (abrupt termination)', hl = 'DiagnosticWarn' },
+        { pat = 'panic%f[^%w]%(', msg = 'panic() call (consider error return instead)', hl = 'DiagnosticWarn' }
     },
     default = {
         { pat = 'http://', msg = 'insecure HTTP (use HTTPS)', hl = 'DiagnosticWarn' },
@@ -537,19 +551,19 @@ function M._get_security_explanation(pattern, matched_text, ft)
   }
   
   local result = string.format("󰌾 Security Issue: %s\n\n", pattern.msg)
-  result = result .. string.format("📝 Description: %s\n", explanation.description)
+  result = result .. string.format("󰦨 Description: %s\n", explanation.description)
   if explanation.impact then
-    result = result .. string.format("⚠️  Impact: %s\n", explanation.impact)
+    result = result .. string.format("󰀪 Impact: %s\n", explanation.impact)
   end
   if explanation.cwe then
-    result = result .. string.format("🔗 CWE: %s\n", explanation.cwe)
+    result = result .. string.format("󰗃 CWE: %s\n", explanation.cwe)
   end
-  result = result .. string.format("💡 Recommendation: %s\n", explanation.recommendation)
+  result = result .. string.format("󰌶 Recommendation: %s\n", explanation.recommendation)
   
   if explanation.examples and explanation.examples[ft] then
-    result = result .. string.format("\n📋 Example (%s):\n%s", ft, explanation.examples[ft])
+    result = result .. string.format("\n󰦩 Example (%s):\n%s", ft, explanation.examples[ft])
   elseif explanation.examples and explanation.examples.general then
-    result = result .. string.format("\n📋 Example:\n%s", explanation.examples.general)
+    result = result .. string.format("\n󰦩 Example:\n%s", explanation.examples.general)
   end
   
   return result
@@ -940,41 +954,803 @@ function M._handle_explain(annotation)
 end
 
 function M._handle_apply_fix(annotation)
+  -- Enhanced fix templates with more comprehensive coverage
   local fixes = {
     ["eval (code injection)"] = {
-      javascript = "JSON.parse(%s)",
-      python = "ast.literal_eval(%s)"
+      javascript = function(matched_text, context)
+        if matched_text:match("JSON") then
+          return "JSON.parse(" .. context.params .. ")"
+        else
+          return "// Use JSON.parse() for data or specific parsing libraries instead of eval()"
+        end
+      end,
+      python = function(matched_text, context)
+        return "ast.literal_eval(" .. context.params .. ")"
+      end,
+      lua = function(matched_text, context)
+        return "-- Use specific parsing instead of loadstring: loadstring() removed"
+      end
     },
     ["innerHTML assignment (XSS)"] = {
-      javascript = "element.textContent = %s"
+      javascript = function(matched_text, context)
+        if context.is_text_only then
+          return context.element .. ".textContent = " .. context.value
+        else
+          return context.element .. ".appendChild(document.createTextNode(" .. context.value .. "))"
+        end
+      end
+    },
+    ["system call (command injection)"] = {
+      c = function(matched_text, context)
+        return "// Use safer alternatives like execvp() with proper argument validation"
+      end,
+      python = function(matched_text, context)
+        if context.params then
+          return "subprocess.run([" .. context.params:gsub("%s+", "\", \"") .. "], check=True)"
+        else
+          return "subprocess.run(command_args, check=True)  # Use list format"
+        end
+      end,
+      lua = function(matched_text, context)
+        return "-- Use io.popen with proper validation or avoid shell execution"
+      end
+    },
+    ["hardcoded password"] = {
+      all = function(matched_text, context)
+        local var_name = context.variable_name or "secret_value"
+        local env_var = var_name:upper():gsub("PASSWORD", "PASS"):gsub("SECRET", "SEC")
+        return string.format("%s = os.getenv('%s') or error('Environment variable %s not set')", 
+                           var_name, env_var, env_var)
+      end
+    },
+    ["strcpy (buffer overflow)"] = {
+      c = function(matched_text, context)
+        return "strncpy(" .. context.dest .. ", " .. context.src .. ", sizeof(" .. context.dest .. ") - 1)"
+      end
+    },
+    ["sprintf (buffer overflow)"] = {
+      c = function(matched_text, context)
+        return "snprintf(" .. context.buffer .. ", sizeof(" .. context.buffer .. "), " .. context.format .. ", " .. context.args .. ")"
+      end
+    },
+    ["console.log"] = {
+      javascript = function(matched_text, context)
+        if vim.bo.filetype == "javascript" and not context.is_debug_environment then
+          return "// console.log removed for production"
+        else
+          return matched_text -- Keep in development
+        end
+      end
+    },
+    ["print() call"] = {
+      python = function(matched_text, context)
+        if context.args then
+          return "logging.debug(" .. context.args .. ")"
+        else
+          return "# print() call removed"
+        end
+      end,
+      lua = function(matched_text, context)
+        if context.args then
+          return "-- Debug: " .. matched_text:gsub("print", "-- print")
+        else
+          return "-- print() call removed"
+        end
+      end,
+      go = function(matched_text, context)
+        if context.args then
+          return "log.Printf(\"Debug: %v\\n\", " .. context.args .. ")"
+        else
+          return "// fmt.Println call removed"
+        end
+      end
+    },
+    ["exec.Command (command injection)"] = {
+      go = function(matched_text, context)
+        return "// Use exec.CommandContext with proper validation and limited arguments\n" ..
+               "ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)\n" ..
+               "defer cancel()\n" ..
+               "cmd := exec.CommandContext(ctx, command, validatedArgs...)"
+      end
+    },
+    ["SQL query (potential injection)"] = {
+      go = function(matched_text, context)
+        return "// Use parameterized queries to prevent SQL injection\n" ..
+               "rows, err := db.Query(\"SELECT * FROM table WHERE id = ?\", userID)"
+      end
+    },
+    ["SQL exec (potential injection)"] = {
+      go = function(matched_text, context)
+        return "// Use parameterized statements to prevent SQL injection\n" ..
+               "_, err := db.Exec(\"UPDATE table SET value = ? WHERE id = ?\", newValue, userID)"
+      end
+    },
+    ["HTTP listener without TLS"] = {
+      go = function(matched_text, context)
+        return "// Use HTTPS with proper TLS configuration\n" ..
+               "server := &http.Server{\n" ..
+               "    Addr: \":8443\",\n" ..
+               "    Handler: handler,\n" ..
+               "    TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},\n" ..
+               "}\n" ..
+               "log.Fatal(server.ListenAndServeTLS(\"server.crt\", \"server.key\"))"
+      end
+    },
+    ["template.HTML (XSS sink)"] = {
+      go = function(matched_text, context)
+        return "// Sanitize user input before rendering\n" ..
+               "import \"html\"\n" ..
+               "safeContent := html.EscapeString(userInput)\n" ..
+               "// Use text/template instead of html/template for untrusted content"
+      end
+    },
+    ["MD5 used (weak hash)"] = {
+      go = function(matched_text, context)
+        return "// Use SHA-256 or stronger hash algorithm\n" ..
+               "import \"crypto/sha256\"\n" ..
+               "hasher := sha256.New()\n" ..
+               "hasher.Write(data)\n" ..
+               "hash := hasher.Sum(nil)"
+      end
+    },
+    ["SHA1 used (weak hash)"] = {
+      go = function(matched_text, context)
+        return "// Use SHA-256 or stronger hash algorithm\n" ..
+               "import \"crypto/sha256\"\n" ..
+               "hasher := sha256.New()\n" ..
+               "hasher.Write(data)\n" ..
+               "hash := hasher.Sum(nil)"
+      end
+    },
+    ["Network connection without TLS"] = {
+      go = function(matched_text, context)
+        return "// Use TLS for secure connections\n" ..
+               "import \"crypto/tls\"\n" ..
+               "config := &tls.Config{MinVersion: tls.VersionTLS12}\n" ..
+               "conn, err := tls.Dial(\"tcp\", address, config)"
+      end
+    },
+    ["unsafe.Pointer usage (memory safety risk)"] = {
+      go = function(matched_text, context)
+        return "// Avoid unsafe.Pointer; use type-safe alternatives\n" ..
+               "// Consider using interface{} or proper type conversion\n" ..
+               "// If unavoidable, ensure proper bounds checking and validation"
+      end
+    },
+    ["panic() call (consider error return instead)"] = {
+      go = function(matched_text, context)
+        return "// Return error instead of panic for better error handling\n" ..
+               "if err != nil {\n" ..
+               "    return fmt.Errorf(\"operation failed: %w\", err)\n" ..
+               "}"
+      end
+    },
+    ["HTTP GET without timeout or TLS verification"] = {
+      go = function(matched_text, context)
+        return "// Use HTTP client with proper timeout and TLS verification\n" ..
+               "client := &http.Client{\n" ..
+               "    Timeout: 30 * time.Second,\n" ..
+               "    Transport: &http.Transport{\n" ..
+               "        TLSClientConfig: &tls.Config{InsecureSkipVerify: false},\n" ..
+               "    },\n" ..
+               "}\n" ..
+               "resp, err := client.Get(url)"
+      end
     }
   }
   
   local bufnr = api.nvim_get_current_buf()
   local ft = vim.bo[bufnr].filetype
+  local range = annotation.range
+  
+  -- Extract context from the matched text and surrounding code
+  local context = M._extract_fix_context(bufnr, range, annotation)
+  
+  -- Try to find a fix for this specific issue
+  local fix_function = nil
   local fix_templates = fixes[annotation.title]
   
-  if fix_templates and fix_templates[ft] then
-    local range = annotation.range
+  if fix_templates then
+    fix_function = fix_templates[ft] or fix_templates.all
+  end
+  
+  if fix_function and type(fix_function) == "function" then
     local old_text = api.nvim_buf_get_text(bufnr, 
       range.start[1] - 1, range.start[2],
       range["end"][1] - 1, range["end"][2], {})[1]
     
-    local new_text = string.format(fix_templates[ft], old_text)
+    local new_text = fix_function(old_text, context)
     
-    api.nvim_buf_set_text(bufnr,
-      range.start[1] - 1, range.start[2],
-      range["end"][1] - 1, range["end"][2],
-      { new_text })
-    
-    vim.notify(string.format("󰁨 Applied fix: %s", new_text), vim.log.levels.INFO)
+    -- Apply the fix with confirmation for significant changes
+    if M._should_confirm_fix(old_text, new_text) then
+      vim.ui.input({
+        prompt = string.format("Apply fix?\nOld: %s\nNew: %s\n(y/N): ", old_text, new_text)
+      }, function(input)
+        if input and input:lower() == 'y' then
+          M._apply_text_replacement(bufnr, range, new_text)
+        end
+      end)
+    else
+      M._apply_text_replacement(bufnr, range, new_text)
+    end
   else
-    vim.notify("󰘖 No automatic fix available for this issue", vim.log.levels.WARN)
+    -- Try to provide generic smart fixes
+    M._handle_generic_smart_fix(annotation, context)
   end
 end
 
+function M._extract_fix_context(bufnr, range, annotation)
+  local context = {}
+  local line_nr = range.start[1]
+  local line = api.nvim_buf_get_lines(bufnr, line_nr - 1, line_nr, false)[1]
+  
+  if not line then return context end
+  
+  -- Extract variable names, function parameters, etc.
+  local matched_text = annotation.matched_text or ""
+  
+  -- Try to extract function parameters
+  local params = line:match("%(([^%)]+)%)")
+  if params then
+    context.params = params
+  end
+  
+  -- Try to extract variable assignments
+  local var_name = line:match("([%w_]+)%s*=")
+  if var_name then
+    context.variable_name = var_name
+  end
+  
+  -- For innerHTML cases, try to extract element and value
+  if annotation.title:match("innerHTML") then
+    local element = line:match("([%w_.]+)%.innerHTML")
+    local value = line:match("innerHTML%s*=%s*(.+)")
+    context.element = element or "element"
+    context.value = value or "userInput"
+    context.is_text_only = not (value and value:match("<"))
+  end
+  
+  -- For buffer overflow cases, extract buffer names
+  if annotation.title:match("buffer overflow") then
+    local dest, src = line:match("%(([^,]+),%s*([^,%)]+)")
+    context.dest = dest or "dest"
+    context.src = src or "src"
+  end
+  
+  -- Check if we're in a debug/development environment
+  context.is_debug_environment = M._is_debug_environment(bufnr)
+  
+  -- Extract function context
+  local utils = require('traceback.lenses.utils')
+  local func_info = utils.get_function_at_line(bufnr, line_nr)
+  if func_info then
+    context.function_name = func_info.name
+    context.in_function = true
+  end
+  
+  return context
+end
+
+function M._should_confirm_fix(old_text, new_text)
+  -- Confirm for significant changes or when removing code entirely
+  if new_text:match("^%s*%-%-") or new_text:match("^%s*//") or new_text:match("^%s*#") then
+    return true -- Commenting out code
+  end
+  if #new_text < #old_text * 0.5 then
+    return true -- Significant reduction in code
+  end
+  if new_text:match("error%(") or new_text:match("throw") then
+    return true -- Adding error conditions
+  end
+  return false
+end
+
+function M._apply_text_replacement(bufnr, range, new_text)
+  -- Handle multiline replacements
+  local lines = vim.split(new_text, "\n")
+  
+  api.nvim_buf_set_text(bufnr,
+    range.start[1] - 1, range.start[2],
+    range["end"][1] - 1, range["end"][2],
+    lines)
+  
+  vim.notify(string.format("󰁨 Applied fix: %s", lines[1]), vim.log.levels.INFO)
+  
+  -- If we added multiple lines, adjust cursor position
+  if #lines > 1 then
+    local cursor_pos = api.nvim_win_get_cursor(0)
+    api.nvim_win_set_cursor(0, {cursor_pos[1] + #lines - 1, 0})
+  end
+end
+
+function M._handle_generic_smart_fix(annotation, context)
+  -- Generic smart fixes based on patterns
+  local bufnr = api.nvim_get_current_buf()
+  local range = annotation.range
+  local line = api.nvim_buf_get_lines(bufnr, range.start[1] - 1, range.start[1], false)[1]
+  
+  -- Remove debug statements
+  if annotation.type == "debug" then
+    local comment_token = M._get_comment_token(vim.bo[bufnr].filetype)
+    local new_line = comment_token .. " " .. line
+    api.nvim_buf_set_lines(bufnr, range.start[1] - 1, range.start[1], false, { new_line })
+    vim.notify("󰁨 Commented out debug statement", vim.log.levels.INFO)
+    return
+  end
+  
+  -- Add TODO comments for complex issues
+  if annotation.severity == "error" and not annotation.matched_text then
+    local comment_token = M._get_comment_token(vim.bo[bufnr].filetype)
+    local todo_line = comment_token .. " TODO: Fix " .. annotation.title
+    api.nvim_buf_set_lines(bufnr, range.start[1] - 1, range.start[1] - 1, false, { todo_line })
+    vim.notify("󰁨 Added TODO comment for manual review", vim.log.levels.INFO)
+    return
+  end
+  
+  vim.notify("󰘖 No automatic fix available for this issue", vim.log.levels.WARN)
+end
+
+function M._is_debug_environment(bufnr)
+  local file_path = api.nvim_buf_get_name(bufnr)
+  if file_path:match("test") or file_path:match("spec") or file_path:match("debug") then
+    return true
+  end
+  
+  -- Check for development indicators in the file
+  local lines = api.nvim_buf_get_lines(bufnr, 0, 50, false) -- Check first 50 lines
+  for _, line in ipairs(lines) do
+    if line:match("NODE_ENV.*development") or line:match("DEBUG.*true") then
+      return true
+    end
+  end
+  
+  return false
+end
+
+function M._get_comment_token(filetype)
+  local comment_tokens = {
+    lua = "--",
+    python = "#",
+    javascript = "//",
+    typescript = "//",
+    c = "//",
+    cpp = "//",
+    go = "//",
+    rust = "//",
+    java = "//",
+    php = "//",
+    ruby = "#",
+    shell = "#",
+    bash = "#",
+    default = "#"
+  }
+  return comment_tokens[filetype] or comment_tokens.default
+end
+
 function M._handle_refactor(annotation)
-  vim.notify("󰖷 Refactoring suggestions will be implemented in future version", vim.log.levels.INFO)
+  local bufnr = api.nvim_get_current_buf()
+  local suggestions = M._generate_refactor_suggestions(bufnr, annotation)
+  
+  if #suggestions == 0 then
+    vim.notify("󰘖 No refactoring suggestions available for this code", vim.log.levels.INFO)
+    return
+  end
+  
+  if #suggestions == 1 then
+    M._apply_refactor_suggestion(bufnr, suggestions[1])
+  else
+    -- Multiple suggestions - let user choose
+    local items = {}
+    for _, suggestion in ipairs(suggestions) do
+      table.insert(items, string.format("%s %s - %s", 
+        suggestion.icon, suggestion.title, suggestion.description))
+    end
+    
+    vim.ui.select(items, {
+      prompt = "󰖷 Select refactoring:",
+      format_item = function(item) return item end
+    }, function(_, idx)
+      if idx then
+        M._apply_refactor_suggestion(bufnr, suggestions[idx])
+      end
+    end)
+  end
+end
+
+function M._generate_refactor_suggestions(bufnr, annotation)
+  local suggestions = {}
+  local range = annotation.range
+  local line_nr = range.start[1]
+  local ft = vim.bo[bufnr].filetype
+  
+  -- Get the code to refactor
+  local lines = api.nvim_buf_get_lines(bufnr, range.start[1] - 1, range["end"][1], false)
+  local code = table.concat(lines, "\n")
+  
+  -- Function-level refactoring suggestions
+  if annotation.type == "code" and annotation.title:match("Function:") then
+    local func_info = M._get_function_at_cursor(bufnr, {line_nr, 0})
+    if func_info then
+      -- High complexity function
+      if func_info.complexity > 10 then
+        table.insert(suggestions, {
+          icon = "󰖷",
+          title = "Extract methods",
+          description = "Break down complex function into smaller methods",
+          type = "extract_methods",
+          range = func_info.range,
+          complexity = func_info.complexity
+        })
+      end
+      
+      -- Long function
+      if func_info.lines > 30 then
+        table.insert(suggestions, {
+            icon = "󰏗",
+          title = "Split function",
+          description = "Divide long function into logical parts",
+          type = "split_function", 
+          range = func_info.range,
+          lines = func_info.lines
+        })
+      end
+      
+      -- Add error handling if missing
+      if not M._has_error_handling(bufnr, func_info.range) then
+        table.insert(suggestions, {
+          icon = "󰄄",
+          title = "Add error handling",
+          description = "Wrap function code with proper error handling",
+          type = "add_error_handling",
+          range = func_info.range
+        })
+      end
+    end
+  end
+  
+  -- Code pattern-based suggestions
+  table.insert(suggestions, unpack(M._get_pattern_refactor_suggestions(code, ft, range)))
+  
+  -- Language-specific suggestions
+  if ft == "lua" then
+    table.insert(suggestions, unpack(M._get_lua_refactor_suggestions(code, range)))
+  elseif ft == "javascript" or ft == "typescript" then
+    table.insert(suggestions, unpack(M._get_js_refactor_suggestions(code, range)))
+  elseif ft == "python" then
+    table.insert(suggestions, unpack(M._get_python_refactor_suggestions(code, range)))
+  end
+  
+  return suggestions
+end
+
+function M._get_pattern_refactor_suggestions(code, ft, range)
+  local suggestions = {}
+  
+  -- Magic numbers
+  if code:match("%d+%.%d+") or code:match("[^%w_]%d%d+[^%w_]") then
+    table.insert(suggestions, {
+      icon = "󰆉",
+      title = "Extract constants",
+      description = "Replace magic numbers with named constants",
+      type = "extract_constants",
+      range = range
+    })
+  end
+  
+  -- Repeated code patterns
+  local lines = vim.split(code, "\n")
+  local repeated_patterns = M._find_repeated_patterns(lines)
+  if #repeated_patterns > 0 then
+    table.insert(suggestions, {
+      icon = "󰑃",
+      title = "Extract common code",
+      description = "Create helper functions for repeated patterns",
+      type = "extract_common",
+      range = range,
+      patterns = repeated_patterns
+    })
+  end
+  
+  -- Long parameter lists
+  if code:match("function[^%(]*%(([^%)]*,[^%)]*,[^%)]*,[^%)]*,)") then
+    table.insert(suggestions, {
+      icon = "󰏗",
+      title = "Simplify parameters",
+      description = "Use object/table parameter instead of long parameter list",
+      type = "simplify_parameters",
+      range = range
+    })
+  end
+  
+  -- Nested conditions
+  local nesting_level = M._calculate_nesting_level(code)
+  if nesting_level > 3 then
+    table.insert(suggestions, {
+      icon = "󰘞",
+      title = "Reduce nesting",
+      description = "Use early returns or guard clauses to reduce nesting",
+      type = "reduce_nesting",
+      range = range,
+      nesting_level = nesting_level
+    })
+  end
+  
+  return suggestions
+end
+
+function M._get_lua_refactor_suggestions(code, range)
+  local suggestions = {}
+  
+  -- Use local variables
+  if code:match("%s+[^%s]+%s*=%s*[^%s]+") and not code:match("local") then
+    table.insert(suggestions, {
+      icon = "󰳽",
+      title = "Add local keywords",
+      description = "Declare variables as local for better performance",
+      type = "add_local",
+      range = range
+    })
+  end
+  
+  -- String concatenation optimization
+  if code:match('%.%..*%.%..*%.%.') then
+    table.insert(suggestions, {
+      icon = "󰓩",
+      title = "Optimize string concat",
+      description = "Use table.concat for multiple string concatenations",
+      type = "optimize_concat",
+      range = range
+    })
+  end
+  
+  -- Table construction optimization
+  if code:match("table%.insert%(.*table%.insert%(") then
+    table.insert(suggestions, {
+      icon = "󰒅",
+      title = "Optimize table construction",
+      description = "Use array-style table construction",
+      type = "optimize_table",
+      range = range
+    })
+  end
+  
+  return suggestions
+end
+
+function M._get_js_refactor_suggestions(code, range)
+  local suggestions = {}
+  
+  -- Use const/let instead of var
+  if code:match("var%s+") then
+    table.insert(suggestions, {
+      icon = "󰯳",
+      title = "Modernize variables",
+      description = "Replace var with const/let",
+      type = "modernize_vars",
+      range = range
+    })
+  end
+  
+  -- Arrow functions
+  if code:match("function%s*%(") and not code:match("function%s+%w+") then
+    table.insert(suggestions, {
+      icon = "󰜎",
+      title = "Use arrow functions",
+      description = "Convert anonymous functions to arrow functions",
+      type = "arrow_functions",
+      range = range
+    })
+  end
+  
+  -- Template literals
+  if code:match('"%s*%+') or code:match("'%s*%+") then
+    table.insert(suggestions, {
+      icon = "󰦸",
+      title = "Use template literals",
+      description = "Replace string concatenation with template literals",
+      type = "template_literals",
+      range = range
+    })
+  end
+  
+  -- Async/await over promises
+  if code:match("%.then%(") and code:match("%.catch%(") then
+    table.insert(suggestions, {
+      icon = "󰃮",
+      title = "Convert to async/await",
+      description = "Replace .then()/.catch() with async/await",
+      type = "async_await",
+      range = range
+    })
+  end
+  
+  return suggestions
+end
+
+function M._get_python_refactor_suggestions(code, range)
+  local suggestions = {}
+  
+  -- List comprehensions
+  if code:match("for%s+.+%s+in%s+.+:") and code:match("%.append%(") then
+    table.insert(suggestions, {
+      icon = "󰦸",
+      title = "Use list comprehension",
+      description = "Replace for loop with list comprehension",
+      type = "list_comprehension", 
+      range = range
+    })
+  end
+  
+  -- F-strings
+  if code:match('"%s*%%') or code:match("%.format%(") then
+    table.insert(suggestions, {
+      icon = "󰓎",
+      title = "Use f-strings",
+      description = "Modernize string formatting with f-strings",
+      type = "f_strings",
+      range = range
+    })
+  end
+  
+  -- Context managers
+  if code:match("open%(") and not code:match("with%s+") then
+    table.insert(suggestions, {
+      icon = "󰯳",
+      title = "Use context manager",
+      description = "Wrap file operations with 'with' statement",
+      type = "context_manager",
+      range = range
+    })
+  end
+  
+  return suggestions
+end
+
+function M._apply_refactor_suggestion(bufnr, suggestion)
+  local handlers = {
+    extract_constants = M._refactor_extract_constants,
+    extract_methods = M._refactor_extract_methods,
+    split_function = M._refactor_split_function,
+    add_error_handling = M._refactor_add_error_handling,
+    extract_common = M._refactor_extract_common,
+    simplify_parameters = M._refactor_simplify_parameters,
+    reduce_nesting = M._refactor_reduce_nesting,
+    add_local = M._refactor_add_local,
+    optimize_concat = M._refactor_optimize_concat,
+    optimize_table = M._refactor_optimize_table,
+    modernize_vars = M._refactor_modernize_vars,
+    arrow_functions = M._refactor_arrow_functions,
+    template_literals = M._refactor_template_literals,
+    async_await = M._refactor_async_await,
+    list_comprehension = M._refactor_list_comprehension,
+    f_strings = M._refactor_f_strings,
+    context_manager = M._refactor_context_manager
+  }
+  
+  local handler = handlers[suggestion.type]
+  if handler then
+    handler(bufnr, suggestion)
+  else
+    vim.notify(string.format("󰘩 Refactoring '%s' not fully implemented yet", suggestion.title), vim.log.levels.WARN)
+    -- Show suggestion details for manual implementation
+    M._show_refactor_guidance(suggestion)
+  end
+end
+
+function M._show_refactor_guidance(suggestion)
+  local guidance = {
+    extract_constants = "Consider extracting magic numbers to named constants at the top of the file",
+    extract_methods = "Look for logical blocks within the function that can be extracted to separate methods",
+    split_function = "Consider breaking this function into smaller, single-purpose functions",
+    add_error_handling = "Add try-catch blocks or validation for potential error conditions",
+    reduce_nesting = "Use early returns, guard clauses, or extraction methods to reduce nesting"
+  }
+  
+  local message = guidance[suggestion.type] or "Manual refactoring recommended for this pattern"
+  vim.notify(string.format("󰗮 Guidance: %s", message), vim.log.levels.INFO)
+end
+
+-- Utility functions for refactoring analysis
+function M._has_error_handling(bufnr, range)
+  local lines = api.nvim_buf_get_lines(bufnr, range.start[1] - 1, range["end"][1], false)
+  local code = table.concat(lines, "\n"):lower()
+  
+  return code:match("try") or code:match("catch") or code:match("error") or 
+         code:match("pcall") or code:match("xpcall") or code:match("assert")
+end
+
+function M._find_repeated_patterns(lines)
+  local patterns = {}
+  local seen = {}
+  
+  for i, line in ipairs(lines) do
+    local trimmed = line:match("^%s*(.-)%s*$") -- trim whitespace
+    if #trimmed > 10 then -- Only consider substantial lines
+      if seen[trimmed] then
+        table.insert(patterns, {
+          pattern = trimmed,
+          lines = {seen[trimmed], i}
+        })
+      else
+        seen[trimmed] = i
+      end
+    end
+  end
+  
+  return patterns
+end
+
+function M._calculate_nesting_level(code)
+  local level = 0
+  local max_level = 0
+  
+  for char in code:gmatch(".") do
+    if char == "{" or char == "(" then
+      level = level + 1
+      max_level = math.max(max_level, level)
+    elseif char == "}" or char == ")" then
+      level = level - 1
+    end
+  end
+  
+  return max_level
+end
+
+-- Simplified refactoring implementations (examples)
+function M._refactor_add_local(bufnr, suggestion)
+  local range = suggestion.range
+  local lines = api.nvim_buf_get_lines(bufnr, range.start[1] - 1, range["end"][1], false)
+  
+  for i, line in ipairs(lines) do
+    local new_line = line:gsub("(%s*)([%w_]+%s*=)", "%1local %2")
+    if new_line ~= line then
+      lines[i] = new_line
+    end
+  end
+  
+  api.nvim_buf_set_lines(bufnr, range.start[1] - 1, range["end"][1], false, lines)
+  vim.notify("󰚰 Added local keywords to variable declarations", vim.log.levels.INFO)
+end
+
+function M._refactor_modernize_vars(bufnr, suggestion)
+  local range = suggestion.range
+  local lines = api.nvim_buf_get_lines(bufnr, range.start[1] - 1, range["end"][1], false)
+
+  for i, line in ipairs(lines) do
+    -- Simple heuristic: use const for assignments without reassignment
+    if line:match("%f[%w]var%s+") and not line:match("=.*=") then
+      lines[i] = line:gsub("%f[%w]var%s+", "const ")
+    end
+  end
+
+  api.nvim_buf_set_lines(bufnr, range.start[1] - 1, range["end"][1], false, lines)
+  vim.notify("󰚰 Modernized variable declarations", vim.log.levels.INFO)
+end
+end
+
+function M._refactor_add_error_handling(bufnr, suggestion)
+  local range = suggestion.range
+  local lines = api.nvim_buf_get_lines(bufnr, range.start[1] - 1, range["end"][1], false)
+  local ft = vim.bo[bufnr].filetype
+  
+  -- Add basic error handling wrapper based on language
+  if ft == "lua" then
+    table.insert(lines, 1, "  local ok, result = pcall(function()")
+    table.insert(lines, "  end)")
+    table.insert(lines, "  if not ok then")
+    table.insert(lines, "    error('Function failed: ' .. tostring(result))")
+    table.insert(lines, "  end")
+    table.insert(lines, "  return result")
+  elseif ft == "javascript" or ft == "typescript" then
+    table.insert(lines, 1, "  try {")
+    table.insert(lines, "  } catch (error) {")
+    table.insert(lines, "    console.error('Function failed:', error);")
+    table.insert(lines, "    throw error;")
+    table.insert(lines, "  }")
+  end
+  
+  api.nvim_buf_set_lines(bufnr, range.start[1] - 1, range["end"][1], false, lines)
+  vim.notify("󰄄 Added error handling wrapper", vim.log.levels.INFO)
 end
 
 function M._handle_suppress_file(annotation)
@@ -1011,7 +1787,7 @@ function M._handle_quick_docs(annotation)
     -- In a real implementation, you might open the URL in a browser
     -- For now, just copy to clipboard
     vim.fn.setreg('+', url)
-    vim.notify("📋 URL copied to clipboard", vim.log.levels.INFO)
+    vim.notify("󰒅 URL copied to clipboard", vim.log.levels.INFO)
   else
     vim.notify("󰘖 No documentation URL available", vim.log.levels.WARN)
   end
@@ -1033,7 +1809,7 @@ function M._handle_copy_snippet(annotation)
   
   if snippet_map and snippet_map[ft] then
     vim.fn.setreg('+', snippet_map[ft])
-    vim.notify(string.format("📋 Copied secure snippet to clipboard: %s", snippet_map[ft]), vim.log.levels.INFO)
+    vim.notify(string.format("󰒅 Copied secure snippet to clipboard: %s", snippet_map[ft]), vim.log.levels.INFO)
   else
     vim.notify("󰘖 No secure snippet available", vim.log.levels.WARN)
   end

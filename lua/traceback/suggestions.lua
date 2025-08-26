@@ -1190,6 +1190,62 @@ local patterns = {
             impact = "performance",
             context_boost = true,
             suggestion = "Use strings.Builder with WriteString and builder.String()"
+        },
+        {
+            regex = "make%s*%(%s*%[%]%w+%s*,%s*0%s*%)",
+            title = "Inefficient slice initialization",
+            description = "Creating slice with zero length but no capacity",
+            base_confidence = 0.7,
+            priority = 3,
+            impact = "performance",
+            suggestion = "Use: make([]Type, 0, expectedSize) to pre-allocate capacity"
+        },
+        {
+            regex = "append%s*%(%s*[%w_]+%s*,%s*[%w_]+%s*%[:%s*%]%s*%.%.%.%s*%)",
+            title = "Inefficient slice append",
+            description = "Appending entire slice can be optimized",
+            base_confidence = 0.8,
+            priority = 3,
+            impact = "performance",
+            suggestion = "Consider copy() for better performance with large slices"
+        },
+        {
+            regex = "json%.Marshal%s*%(%s*[%w_]+%s*%)",
+            title = "Repeated JSON marshaling",
+            description = "Cache marshaled JSON if data doesn't change frequently",
+            base_confidence = 0.5,
+            priority = 4,
+            impact = "performance",
+            context_boost = true,
+            suggestion = "Consider caching JSON output or using json.RawMessage"
+        },
+        {
+            regex = "regexp%.MustCompile%s*%(%s*\"",
+            title = "Repeated regex compilation",
+            description = "Compile regex once and reuse",
+            base_confidence = 0.9,
+            priority = 2,
+            impact = "performance",
+            suggestion = "Move regex compilation to package level or use sync.Once"
+        },
+        {
+            regex = "time%.Sleep%s*%(%s*[%d]+%s*%*%s*time%.",
+            title = "Blocking sleep",
+            description = "Consider using context with timeout instead",
+            base_confidence = 0.6,
+            priority = 3,
+            impact = "concurrency",
+            suggestion = "Use: ctx, cancel := context.WithTimeout(); select { case <-ctx.Done(): }"
+        },
+        {
+            regex = "sync%.Mutex.*Lock%s*%(%s*%).*defer.*Unlock",
+            title = "Consider RWMutex for read-heavy operations",
+            description = "RWMutex allows concurrent reads",
+            base_confidence = 0.4,
+            priority = 4,
+            impact = "performance",
+            context_boost = true,
+            suggestion = "Use sync.RWMutex if reads are more frequent than writes"
         }
     }
 }
@@ -1727,6 +1783,84 @@ local patterns = {
             regex = "[^_%w]rand%s*%.%s*Intn%s*%(",
             title = "Insecure random for secrets",
             description = "math/rand is not cryptographically secure",
+            confidence = 0.8,
+            cwe = "CWE-338",
+            upgrade_suggestion = "Use crypto/rand for cryptographic purposes",
+            replacement = "rand.Read (crypto/rand)"
+        },
+        {
+            regex = "sql%.Query%s*%(%s*\".-\"%s*%+",
+            title = "SQL injection vulnerability",
+            description = "String concatenation in SQL queries allows injection",
+            confidence = 0.9,
+            cwe = "CWE-89",
+            upgrade_suggestion = "Use parameterized queries with placeholders",
+            replacement = "db.Query(\"SELECT * FROM table WHERE id = ?\", userID)"
+        },
+        {
+            regex = "sql%.Exec%s*%(%s*\".-\"%s*%+",
+            title = "SQL injection vulnerability",
+            description = "String concatenation in SQL queries allows injection",
+            confidence = 0.9,
+            cwe = "CWE-89",
+            upgrade_suggestion = "Use parameterized queries with placeholders",
+            replacement = "db.Exec(\"UPDATE table SET value = ? WHERE id = ?\", newValue, userID)"
+        },
+        {
+            regex = "template%.HTML%s*%(%s*[%w_]+%s*%)",
+            title = "XSS vulnerability",
+            description = "template.HTML bypasses auto-escaping",
+            confidence = 0.85,
+            cwe = "CWE-79",
+            upgrade_suggestion = "Ensure input is properly sanitized or use text/template",
+            replacement = "html.EscapeString(userInput)"
+        },
+        {
+            regex = "http%.ListenAndServe%s*%(%s*\"[^:]*:80",
+            title = "Unencrypted HTTP server",
+            description = "HTTP traffic is unencrypted",
+            confidence = 0.8,
+            cwe = "CWE-319",
+            upgrade_suggestion = "Use HTTPS with ListenAndServeTLS",
+            replacement = "http.ListenAndServeTLS(\":443\", \"cert.pem\", \"key.pem\", handler)"
+        },
+        {
+            regex = "ioutil%.WriteFile%s*%([^,]*,%s*[^,]*,%s*0777",
+            title = "Overly permissive file permissions",
+            description = "0777 allows read/write/execute for all users",
+            confidence = 0.9,
+            cwe = "CWE-732",
+            upgrade_suggestion = "Use more restrictive permissions like 0644 or 0600",
+            replacement = "0644"
+        },
+        {
+            regex = "unsafe%.Pointer%s*%(",
+            title = "Memory safety bypass",
+            description = "unsafe.Pointer bypasses Go's type safety",
+            confidence = 0.7,
+            cwe = "CWE-119",
+            upgrade_suggestion = "Use type-safe alternatives when possible",
+            replacement = "// Consider type-safe alternatives"
+        },
+        {
+            regex = "log%.Printf%s*%([^,]*,%s*[%w_]*[Pp]assword",
+            title = "Password logged",
+            description = "Passwords should not be logged",
+            confidence = 0.85,
+            cwe = "CWE-532",
+            upgrade_suggestion = "Remove password from logs or mask it",
+            replacement = "log.Printf(\"User: %s, Password: [REDACTED]\", user)"
+        },
+        {
+            regex = "time%.Sleep%s*%(%s*[%d]+%s*%*%s*time%.Second%s*%)",
+            title = "Potential DoS vector",
+            description = "Long sleep times can be abused for DoS",
+            confidence = 0.4,
+            cwe = "CWE-400",
+            upgrade_suggestion = "Use context with timeout for cancellation",
+            replacement = "ctx, cancel := context.WithTimeout(ctx, duration)"
+        }
+    },
             confidence = 0.9,
             cwe = "CWE-330",
             upgrade_suggestion = "Use crypto/rand for secret generation",
@@ -2145,6 +2279,700 @@ function M.get_suggestions_for_function_at_cursor(bufnr, cursor_pos)
   end
   
   return M.analyze_and_suggest(bufnr, func_info.range)
+end
+
+-- Enhanced buffer scanning with multiple analysis layers
+function M.scan_buffer_comprehensive(bufnr, options)
+  bufnr = bufnr or api.nvim_get_current_buf()
+  options = options or {}
+  
+  local scan_options = vim.tbl_deep_extend("force", {
+    include_complexity = true,
+    include_patterns = true,
+    include_security = true,
+    include_performance = true,
+    include_dependencies = true,
+    include_documentation = true,
+    detailed_metrics = true,
+    scan_depth = "thorough" -- "quick", "normal", "thorough"
+  }, options)
+  
+  local scan_result = {
+    summary = {
+      total_lines = api.nvim_buf_line_count(bufnr),
+      file_type = vim.bo[bufnr].filetype,
+      scan_timestamp = os.date("%Y-%m-%d %H:%M:%S"),
+      scan_duration = 0
+    },
+    metrics = {},
+    suggestions = {},
+    quality_score = 0,
+    maintainability_index = 0
+  }
+  
+  local start_time = os.clock()
+  
+  -- Layer 1: Basic code metrics
+  if scan_options.include_complexity then
+    scan_result.metrics.complexity = M._analyze_complexity_metrics(bufnr)
+  end
+  
+  -- Layer 2: Code quality patterns
+  if scan_options.include_patterns then
+    scan_result.metrics.patterns = M._analyze_code_patterns(bufnr)
+  end
+  
+  -- Layer 3: Security analysis
+  if scan_options.include_security then
+    scan_result.metrics.security = M._analyze_security_metrics(bufnr)
+  end
+  
+  -- Layer 4: Performance analysis
+  if scan_options.include_performance then
+    scan_result.metrics.performance = M._analyze_performance_metrics(bufnr)
+  end
+  
+  -- Layer 5: Dependency analysis
+  if scan_options.include_dependencies then
+    scan_result.metrics.dependencies = M._analyze_dependencies(bufnr)
+  end
+  
+  -- Layer 6: Documentation analysis
+  if scan_options.include_documentation then
+    scan_result.metrics.documentation = M._analyze_documentation(bufnr)
+  end
+  
+  -- Generate comprehensive suggestions
+  scan_result.suggestions = M._generate_comprehensive_suggestions(bufnr, scan_result.metrics)
+  
+  -- Calculate quality scores
+  scan_result.quality_score = M._calculate_quality_score(scan_result.metrics)
+  scan_result.maintainability_index = M._calculate_maintainability_index(scan_result.metrics)
+  
+  scan_result.summary.scan_duration = os.clock() - start_time
+  
+  return scan_result
+end
+
+-- Analyze complexity metrics across the buffer
+function M._analyze_complexity_metrics(bufnr)
+  local metrics = {
+    functions = {},
+    total_complexity = 0,
+    average_complexity = 0,
+    max_complexity = 0,
+    high_complexity_functions = 0,
+    cyclomatic_distribution = { low = 0, medium = 0, high = 0, very_high = 0 }
+  }
+  
+  local line_count = api.nvim_buf_line_count(bufnr)
+  local functions = M._analyze_functions(bufnr, { start = { 1, 0 }, ["end"] = { line_count, 0 } }, vim.bo[bufnr].filetype)
+  
+  for _, func in ipairs(functions) do
+    metrics.functions[func.name or "anonymous"] = {
+      complexity = func.complexity,
+      lines = func.lines,
+      parameters = func.parameter_count or 0,
+      nesting_depth = func.nesting_depth or 0,
+      range = func.range
+    }
+    
+    metrics.total_complexity = metrics.total_complexity + func.complexity
+    metrics.max_complexity = math.max(metrics.max_complexity, func.complexity)
+    
+    if func.complexity > 15 then
+      metrics.high_complexity_functions = metrics.high_complexity_functions + 1
+      metrics.cyclomatic_distribution.very_high = metrics.cyclomatic_distribution.very_high + 1
+    elseif func.complexity > 10 then
+      metrics.cyclomatic_distribution.high = metrics.cyclomatic_distribution.high + 1
+    elseif func.complexity > 5 then
+      metrics.cyclomatic_distribution.medium = metrics.cyclomatic_distribution.medium + 1
+    else
+      metrics.cyclomatic_distribution.low = metrics.cyclomatic_distribution.low + 1
+    end
+  end
+  
+  if #functions > 0 then
+    metrics.average_complexity = metrics.total_complexity / #functions
+  end
+  
+  return metrics
+end
+
+-- Analyze code patterns and smells
+function M._analyze_code_patterns(bufnr)
+  local metrics = {
+    code_smells = {},
+    pattern_violations = {},
+    duplication_candidates = {},
+    naming_issues = {},
+    structure_issues = {}
+  }
+  
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local ft = vim.bo[bufnr].filetype
+  
+  -- Detect code smells
+  metrics.code_smells = M._detect_code_smells(lines, ft)
+  
+  -- Find duplication candidates
+  metrics.duplication_candidates = M._find_duplication_candidates(lines)
+  
+  -- Analyze naming patterns
+  metrics.naming_issues = M._analyze_naming_patterns(lines, ft)
+  
+  -- Check structural issues
+  metrics.structure_issues = M._analyze_structure_issues(lines, ft)
+  
+  return metrics
+end
+
+-- Analyze security metrics
+function M._analyze_security_metrics(bufnr)
+  local metrics = {
+    vulnerability_count = 0,
+    security_issues = {},
+    risk_level = "low",
+    hardcoded_secrets = 0,
+    insecure_functions = 0,
+    missing_validations = 0
+  }
+  
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local ft = vim.bo[bufnr].filetype
+  local security_patterns = M._get_security_upgrade_patterns(ft)
+  
+  for i, line in ipairs(lines) do
+    for _, pattern in ipairs(security_patterns) do
+      if line:find(pattern.regex or "") then
+        metrics.vulnerability_count = metrics.vulnerability_count + 1
+        table.insert(metrics.security_issues, {
+          line = i,
+          type = pattern.title,
+          severity = M._get_security_severity(pattern),
+          cwe = pattern.cwe
+        })
+        
+        -- Categorize issues
+        if pattern.title:lower():match("password") or pattern.title:lower():match("secret") then
+          metrics.hardcoded_secrets = metrics.hardcoded_secrets + 1
+        elseif pattern.title:lower():match("injection") or pattern.title:lower():match("exec") then
+          metrics.insecure_functions = metrics.insecure_functions + 1
+        end
+      end
+    end
+  end
+  
+  -- Determine overall risk level
+  if metrics.vulnerability_count > 5 or metrics.hardcoded_secrets > 0 then
+    metrics.risk_level = "high"
+  elseif metrics.vulnerability_count > 2 or metrics.insecure_functions > 0 then
+    metrics.risk_level = "medium"
+  end
+  
+  return metrics
+end
+
+-- Analyze performance metrics
+function M._analyze_performance_metrics(bufnr)
+  local metrics = {
+    performance_issues = {},
+    hot_path_violations = 0,
+    inefficient_algorithms = 0,
+    resource_leaks = 0,
+    optimization_opportunities = {}
+  }
+  
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local ft = vim.bo[bufnr].filetype
+  local perf_patterns = M._get_performance_patterns(ft)
+  
+  for i, line in ipairs(lines) do
+    for _, pattern in ipairs(perf_patterns) do
+      if line:find(pattern.regex or "") then
+        local is_in_loop = M._is_in_loop(bufnr, i, ft)
+        local issue = {
+          line = i,
+          type = pattern.title,
+          severity = is_in_loop and "high" or "medium",
+          in_loop = is_in_loop,
+          optimization = pattern.optimization
+        }
+        
+        table.insert(metrics.performance_issues, issue)
+        table.insert(metrics.optimization_opportunities, {
+          line = i,
+          description = pattern.optimization,
+          expected_improvement = is_in_loop and "significant" or "moderate"
+        })
+        
+        if is_in_loop then
+          metrics.hot_path_violations = metrics.hot_path_violations + 1
+        end
+      end
+    end
+  end
+  
+  return metrics
+end
+
+-- Analyze dependencies and imports
+function M._analyze_dependencies(bufnr)
+  local metrics = {
+    imports = {},
+    external_dependencies = 0,
+    unused_imports = 0,
+    circular_dependencies = {},
+    deprecated_dependencies = {}
+  }
+  
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local ft = vim.bo[bufnr].filetype
+  
+  local import_patterns = {
+    lua = { "require%s*[%(%'\"]([^%)'\"]+)[%)'\"%)%s]*", "local%s+([%w_]+)%s*=%s*require" },
+    python = { "import%s+([%w_.]+)", "from%s+([%w_.]+)%s+import" },
+    javascript = { "import%s+.-%s+from%s+['\"]([^'\"]+)['\"]", "require%s*%(%s*['\"]([^'\"]+)['\"]" },
+    go = { "import%s+['\"]([^'\"]+)['\"]" },
+    c = { "#include%s+[<\"]([^>\"]+)[>\"]" },
+    cpp = { "#include%s+[<\"]([^>\"]+)[>\"]" }
+  }
+  
+  local patterns = import_patterns[ft] or {}
+  
+  for _, line in ipairs(lines) do
+    for _, pattern in ipairs(patterns) do
+      local matches = { line:match(pattern) }
+      for _, match in ipairs(matches) do
+        if match then
+          table.insert(metrics.imports, match)
+          metrics.external_dependencies = metrics.external_dependencies + 1
+        end
+      end
+    end
+  end
+  
+  -- Remove duplicates
+  local unique_imports = {}
+  for _, import in ipairs(metrics.imports) do
+    if not unique_imports[import] then
+      unique_imports[import] = true
+    end
+  end
+  
+  metrics.imports = vim.tbl_keys(unique_imports)
+  metrics.external_dependencies = #metrics.imports
+  
+  return metrics
+end
+
+-- Analyze documentation quality
+function M._analyze_documentation(bufnr)
+  local metrics = {
+    comment_lines = 0,
+    total_lines = 0,
+    comment_ratio = 0,
+    documented_functions = 0,
+    total_functions = 0,
+    documentation_coverage = 0,
+    todo_comments = 0,
+    fixme_comments = 0
+  }
+  
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local ft = vim.bo[bufnr].filetype
+  
+  local comment_patterns = {
+    lua = "^%s*%-%-",
+    python = "^%s*#",
+    javascript = "^%s*//",
+    typescript = "^%s*//",
+    c = "^%s*//",
+    cpp = "^%s*//",
+    go = "^%s*//"
+  }
+  
+  local comment_pattern = comment_patterns[ft] or "^%s*#"
+  
+  metrics.total_lines = #lines
+  
+  for _, line in ipairs(lines) do
+    if line:match(comment_pattern) then
+      metrics.comment_lines = metrics.comment_lines + 1
+      
+      if line:lower():match("todo") then
+        metrics.todo_comments = metrics.todo_comments + 1
+      elseif line:lower():match("fixme") then
+        metrics.fixme_comments = metrics.fixme_comments + 1
+      end
+    end
+  end
+  
+  if metrics.total_lines > 0 then
+    metrics.comment_ratio = metrics.comment_lines / metrics.total_lines
+  end
+  
+  -- Analyze function documentation
+  local functions = M._analyze_functions(bufnr, { start = { 1, 0 }, ["end"] = { metrics.total_lines, 0 } }, ft)
+  metrics.total_functions = #functions
+  
+  for _, func in ipairs(functions) do
+    -- Check if function has documentation before it
+    local func_line = func.range.start[1]
+    if func_line > 1 then
+      local prev_line = api.nvim_buf_get_lines(bufnr, func_line - 2, func_line - 1, false)[1]
+      if prev_line and prev_line:match(comment_pattern) then
+        metrics.documented_functions = metrics.documented_functions + 1
+      end
+    end
+  end
+  
+  if metrics.total_functions > 0 then
+    metrics.documentation_coverage = metrics.documented_functions / metrics.total_functions
+  end
+  
+  return metrics
+end
+
+-- Generate comprehensive suggestions based on all metrics
+function M._generate_comprehensive_suggestions(bufnr, metrics)
+  local suggestions = {}
+  local ft = vim.bo[bufnr].filetype
+  
+  -- Complexity-based suggestions
+  if metrics.complexity then
+    if metrics.complexity.high_complexity_functions > 0 then
+      table.insert(suggestions, {
+        type = "refactor",
+        priority = 1,
+        title = "High complexity functions detected",
+        description = string.format("Found %d functions with high complexity. Consider refactoring.",
+          metrics.complexity.high_complexity_functions),
+        impact = "maintainability",
+        confidence = 0.9,
+        action = "refactor_complex_functions"
+      })
+    end
+    
+    if metrics.complexity.average_complexity > 10 then
+      table.insert(suggestions, {
+        type = "refactor",
+        priority = 2,
+        title = "Overall complexity is high",
+        description = string.format("Average function complexity is %.1f. Consider simplifying logic.",
+          metrics.complexity.average_complexity),
+        impact = "maintainability",
+        confidence = 0.8,
+        action = "simplify_logic"
+      })
+    end
+  end
+  
+  -- Security-based suggestions
+  if metrics.security then
+    if metrics.security.risk_level == "high" then
+      table.insert(suggestions, {
+        type = "security",
+        priority = 1,
+        title = "High security risk detected",
+        description = string.format("Found %d security vulnerabilities. Immediate attention required.",
+          metrics.security.vulnerability_count),
+        impact = "security",
+        confidence = 0.95,
+        action = "fix_security_issues"
+      })
+    elseif metrics.security.vulnerability_count > 0 then
+      table.insert(suggestions, {
+        type = "security",
+        priority = 2,
+        title = "Security improvements needed",
+        description = string.format("Found %d potential security issues.",
+          metrics.security.vulnerability_count),
+        impact = "security",
+        confidence = 0.8,
+        action = "review_security"
+      })
+    end
+  end
+  
+  -- Performance-based suggestions
+  if metrics.performance then
+    if metrics.performance.hot_path_violations > 0 then
+      table.insert(suggestions, {
+        type = "performance",
+        priority = 1,
+        title = "Performance bottlenecks in loops",
+        description = string.format("Found %d performance issues in hot paths.",
+          metrics.performance.hot_path_violations),
+        impact = "performance",
+        confidence = 0.85,
+        action = "optimize_hot_paths"
+      })
+    end
+  end
+  
+  -- Documentation suggestions
+  if metrics.documentation then
+    if metrics.documentation.documentation_coverage < 0.5 then
+      table.insert(suggestions, {
+        type = "documentation",
+        priority = 3,
+        title = "Low documentation coverage",
+        description = string.format("Only %.0f%% of functions are documented.",
+          metrics.documentation.documentation_coverage * 100),
+        impact = "maintainability",
+        confidence = 0.7,
+        action = "improve_documentation"
+      })
+    end
+    
+    if metrics.documentation.todo_comments > 5 then
+      table.insert(suggestions, {
+        type = "maintenance",
+        priority = 2,
+        title = "Many TODO comments",
+        description = string.format("Found %d TODO comments. Consider addressing them.",
+          metrics.documentation.todo_comments),
+        impact = "maintenance",
+        confidence = 0.6,
+        action = "address_todos"
+      })
+    end
+  end
+  
+  return suggestions
+end
+
+-- Calculate overall quality score (0-100)
+function M._calculate_quality_score(metrics)
+  local score = 100
+  
+  -- Complexity penalty
+  if metrics.complexity then
+    local complexity_penalty = math.min(30, metrics.complexity.high_complexity_functions * 10)
+    score = score - complexity_penalty
+  end
+  
+  -- Security penalty
+  if metrics.security then
+    local security_penalty = math.min(40, metrics.security.vulnerability_count * 8)
+    score = score - security_penalty
+  end
+  
+  -- Performance penalty
+  if metrics.performance then
+    local perf_penalty = math.min(20, metrics.performance.hot_path_violations * 5)
+    score = score - perf_penalty
+  end
+  
+  -- Documentation penalty
+  if metrics.documentation then
+    local doc_penalty = (1 - metrics.documentation.documentation_coverage) * 15
+    score = score - doc_penalty
+  end
+  
+  return math.max(0, math.floor(score))
+end
+
+-- Calculate maintainability index (0-100)
+function M._calculate_maintainability_index(metrics)
+  -- Simplified maintainability index based on complexity, documentation, and size
+  local base_score = 100
+  
+  if metrics.complexity then
+    local complexity_factor = math.min(50, metrics.complexity.average_complexity * 3)
+    base_score = base_score - complexity_factor
+  end
+  
+  if metrics.documentation then
+    local doc_bonus = metrics.documentation.documentation_coverage * 20
+    base_score = base_score + doc_bonus
+  end
+  
+  -- Adjust for file size (larger files are harder to maintain)
+  local line_count = metrics.patterns and #metrics.patterns or 0
+  if line_count > 500 then
+    base_score = base_score - math.min(20, (line_count - 500) / 100)
+  end
+  
+  return math.max(0, math.min(100, math.floor(base_score)))
+end
+
+-- Helper functions for detailed analysis
+function M._detect_code_smells(lines, ft)
+  local smells = {}
+  
+  -- Long parameter lists
+  for i, line in ipairs(lines) do
+    local param_count = 0
+    for _ in line:gmatch(",") do
+      param_count = param_count + 1
+    end
+    if param_count > 5 and line:match("function") then
+      table.insert(smells, {
+        line = i,
+        type = "long_parameter_list",
+        severity = "medium"
+      })
+    end
+  end
+  
+  -- Large functions (simple heuristic)
+  local in_function = false
+  local function_start = 0
+  local brace_count = 0
+  
+  for i, line in ipairs(lines) do
+    if line:match("function") or line:match("def ") then
+      in_function = true
+      function_start = i
+      brace_count = 0
+    end
+    
+    if in_function then
+      brace_count = brace_count + (line:match("{") and 1 or 0)
+      brace_count = brace_count - (line:match("}") and 1 or 0)
+      
+      if brace_count == 0 and (line:match("}") or line:match("end")) then
+        if i - function_start > 50 then
+          table.insert(smells, {
+            line = function_start,
+            type = "large_function",
+            severity = "high",
+            length = i - function_start
+          })
+        end
+        in_function = false
+      end
+    end
+  end
+  
+  return smells
+end
+
+function M._find_duplication_candidates(lines)
+  local candidates = {}
+  local line_groups = {}
+  
+  -- Group similar lines
+  for i, line in ipairs(lines) do
+    local trimmed = line:match("^%s*(.-)%s*$")
+    if #trimmed > 10 then -- Only consider substantial lines
+      if not line_groups[trimmed] then
+        line_groups[trimmed] = {}
+      end
+      table.insert(line_groups[trimmed], i)
+    end
+  end
+  
+  -- Find duplicates
+  for line_text, line_numbers in pairs(line_groups) do
+    if #line_numbers > 1 then
+      table.insert(candidates, {
+        text = line_text,
+        occurrences = line_numbers,
+        count = #line_numbers
+      })
+    end
+  end
+  
+  return candidates
+end
+
+function M._analyze_naming_patterns(lines, ft)
+  local issues = {}
+  
+  -- Check for naming conventions based on language
+  local naming_patterns = {
+    lua = {
+      variable = "^[a-z][a-z0-9_]*$",
+      function_name = "^[a-z][a-z0-9_]*$",
+      constant = "^[A-Z][A-Z0-9_]*$"
+    },
+    python = {
+      variable = "^[a-z][a-z0-9_]*$",
+      function_name = "^[a-z][a-z0-9_]*$",
+      constant = "^[A-Z][A-Z0-9_]*$",
+      class_name = "^[A-Z][a-zA-Z0-9]*$"
+    },
+    javascript = {
+      variable = "^[a-z][a-zA-Z0-9]*$",
+      function_name = "^[a-z][a-zA-Z0-9]*$",
+      constant = "^[A-Z][A-Z0-9_]*$"
+    }
+  }
+  
+  -- Simple naming analysis (this could be much more sophisticated)
+  for i, line in ipairs(lines) do
+    -- Check for single-letter variables (potential issue)
+    if line:match("[^%w_][a-z]%s*=") and not line:match("for%s+[a-z]%s*=") then
+      table.insert(issues, {
+        line = i,
+        type = "single_letter_variable",
+        severity = "low"
+      })
+    end
+    
+    -- Check for overly long names
+    local long_name = line:match("([%w_]{30,})")
+    if long_name then
+      table.insert(issues, {
+        line = i,
+        type = "overly_long_name",
+        severity = "low",
+        name = long_name
+      })
+    end
+  end
+  
+  return issues
+end
+
+function M._analyze_structure_issues(lines, ft)
+  local issues = {}
+  
+  -- Check for deep nesting
+  local max_nesting = 0
+  local current_nesting = 0
+  
+  for i, line in ipairs(lines) do
+    local indent_level = #line:match("^%s*") / 2 -- Assuming 2-space indents
+    
+    if indent_level > max_nesting then
+      max_nesting = indent_level
+    end
+    
+    if indent_level > 6 then -- Deep nesting threshold
+      table.insert(issues, {
+        line = i,
+        type = "deep_nesting",
+        severity = "medium",
+        level = indent_level
+      })
+    end
+  end
+  
+  return issues
+end
+
+function M._get_security_severity(pattern)
+  if pattern.cwe then
+    -- High severity CWEs
+    local high_severity = { "CWE-78", "CWE-94", "CWE-120", "CWE-502" }
+    for _, cwe in ipairs(high_severity) do
+      if pattern.cwe == cwe then
+        return "high"
+      end
+    end
+  end
+  
+  if pattern.confidence and pattern.confidence > 0.9 then
+    return "high"
+  elseif pattern.confidence and pattern.confidence > 0.7 then
+    return "medium"
+  else
+    return "low"
+  end
 end
 
 return M
