@@ -1,4 +1,5 @@
 local M = {}
+local U = require('traceback.utils')
 
 local api = vim.api
 local ns_actions = api.nvim_create_namespace("traceback_actions")
