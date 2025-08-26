@@ -1859,14 +1859,17 @@ local patterns = {
             cwe = "CWE-400",
             upgrade_suggestion = "Use context with timeout for cancellation",
             replacement = "ctx, cancel := context.WithTimeout(ctx, duration)"
+        },
+        {
+          regex = "crypto%.RandBytes%s*%(%s*[%d]+%s*%)",
+          title = "Insecure random number generation",
+          description = "crypto/rand should be used for cryptographic purposes",
+          confidence = 0.9,
+          cwe = "CWE-330",
+          upgrade_suggestion = "Use crypto/rand for secret generation",
+          replacement = "crypto/rand"
         }
     },
-            confidence = 0.9,
-            cwe = "CWE-330",
-            upgrade_suggestion = "Use crypto/rand for secret generation",
-            replacement = "crypto/rand"
-        }
-    }
 }
   
   return patterns[ft] or {}

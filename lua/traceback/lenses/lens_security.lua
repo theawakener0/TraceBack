@@ -852,6 +852,20 @@ function M._render_with_context_analysis(bufnr, from, to, priority)
   return anno
 end
 
+-- per-project allowlist loader
+local function load_project_allowlist()
+  local cwd = vim.fn.getcwd()
+  local path = cwd .. '/.traceback_security.lua'
+  if vim.fn.filereadable(path) == 1 then
+    local ok, tbl = pcall(dofile, path)
+    if ok and type(tbl) == 'table' then return tbl end
+  end
+  return {}
+end
+
+-- in-memory allowlist (can be extended by UI command)
+local project_allowlist = load_project_allowlist()
+
 -- Enhanced allowlist checking with context
 function M._check_enhanced_allowlist(matched, rule, context)
   -- Check project allowlist
@@ -952,20 +966,6 @@ local taint_queries = {
     (return_statement (expression_list (_) ) @rhs)
   ]],
 }
-
--- per-project allowlist loader
-local function load_project_allowlist()
-  local cwd = vim.fn.getcwd()
-  local path = cwd .. '/.traceback_security.lua'
-  if vim.fn.filereadable(path) == 1 then
-    local ok, tbl = pcall(dofile, path)
-    if ok and type(tbl) == 'table' then return tbl end
-  end
-  return {}
-end
-
--- in-memory allowlist (can be extended by UI command)
-local project_allowlist = load_project_allowlist()
 
 function M.get_project_allowlist()
   return project_allowlist
