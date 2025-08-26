@@ -234,140 +234,7 @@ function M._perform_auto_render(bufnr, priority, event_type)
   end
 end
 
--- Enhanced rendering with context analysis
-function M._render_with_context_analysis(bufnr, from, to, priority)
-  local ns = vim.api.nvim_create_namespace('TracebackSecurityEnhanced')
-  
-  -- Clear previous annotations in range
-  vim.api.nvim_buf_clear_namespace(bufnr, ns, from - 1, to)
-  
-  local cfg = security_config
-  local max_anno = cfg.max_auto_annotations or 150
-  local lines = vim.api.nvim_buf_get_lines(bufnr, from-1, to, false)
-  local ft = U.get_effective_language(bufnr)
-  local rules = insecure_by_ft[ft] or insecure_by_ft.default
-  local sc_ranges = (cfg.treesitter and U.ts_available(bufnr, cfg)) and U.ts_sc_ranges(bufnr, ft, from, to) or {}
-  local anno = 0
-  local severity_score = { DiagnosticError = 3, DiagnosticWarn = 2, DiagnosticInfo = 1 }
-  local min_score = cfg.confidence_threshold and (cfg.confidence_threshold * 3) or 2
-  
-  for i, line in ipairs(lines) do
-    local line_nr = from + i - 2
-    
-    for _, r in ipairs(rules) do
-      local s, e = line:find(r.pat)
-      if s and not U.col_in_ranges(line_nr, s-1, sc_ranges) then
-        local matched = line:sub(s, e)
-        
-        -- Enhanced context analysis
-        local context = cfg.context_analysis and U.analyze_security_context(bufnr, line_nr + 1, r.pat, matched) or {}
-        
-        -- Base score from severity
-        local base = severity_score[r.hl] or 1
-        
-        -- Context-based confidence boost
-        local context_boost = context.confidence_modifiers or 0
-        
-        -- Secret heuristic bonus for token-like findings
-        local secret_ok = false
-        if r.msg:lower():match('key') or r.msg:lower():match('secret') or r.msg:lower():match('token') or r.pat:match('AKIA') or r.pat:match('xox') or r.pat:match('JWT') then
-          secret_ok = looks_like_secret(matched, cfg)
-        end
-        local secret_bonus = secret_ok and (cfg.secret_bonus or 2) or 0
-        
-        -- Priority pattern boost
-        local priority_boost = 0
-        for _, priority_pattern in ipairs(security_config.priority_patterns) do
-          if r.msg:lower():match(priority_pattern) or matched:lower():match(priority_pattern) then
-            priority_boost = 0.5
-            break
-          end
-        end
-        
-        local final_score = base + context_boost + secret_bonus + priority_boost
-        
-        -- Smart filtering based on configuration
-        if cfg.smart_filtering then
-          -- Skip low-confidence findings in low-priority renders
-          if priority == 'low' and final_score < (min_score + 0.5) then
-            goto continue
-          end
-          
-          -- Enhanced allowlist checking
-          local skip = M._check_enhanced_allowlist(matched, r, context)
-          if skip then goto continue end
-        end
-        
-        if final_score >= min_score then
-          -- Enhanced annotation with context info
-          local virt_text = {'󰯳 '..r.msg, r.hl}
-          
-          -- Add context indicators
-          if context.in_function and context.function_name then
-            virt_text[1] = virt_text[1] .. string.format(" [in %s()]", context.function_name)
-          end
-          
-          if context.in_loop then
-            virt_text[1] = virt_text[1] .. " [⟲ loop]"
-          end
-          
-          -- Add confidence indicator
-          if secret_ok then
-            virt_text[1] = virt_text[1] .. " [󰓎 high confidence]"
-          end
-          
-          vim.api.nvim_buf_set_extmark(bufnr, ns, line_nr, s-1, { 
-            end_col = e, 
-            hl_group = r.hl,
-            priority = math.floor(final_score * 10) -- Higher priority for more confident findings
-          })
-          vim.api.nvim_buf_set_extmark(bufnr, ns, line_nr, 0, {
-            virt_text = {virt_text}, 
-            virt_text_pos = 'eol',
-            priority = math.floor(final_score * 10)
-          })
-          anno = anno + 1
-          if anno >= max_anno then break end
-        end
-        ::continue::
-      end
-    end
-    if anno >= max_anno then break end
-  end
-  
-  return anno
-end
-
--- Enhanced allowlist checking with context
-function M._check_enhanced_allowlist(matched, rule, context)
-  -- Check project allowlist
-  for _, p in ipairs(project_allowlist) do
-    if matched:match(p) then 
-      return true 
-    end
-  end
-  
-  -- Context-based smart filtering
-  if context.function_name then
-    -- Skip common test function patterns
-    local test_patterns = { "test_", "spec_", "_test", "_spec", "mock_", "stub_" }
-    for _, pattern in ipairs(test_patterns) do
-      if context.function_name:lower():match(pattern) then
-        return true
-      end
-    end
-  end
-  
-  -- Skip very common development patterns in specific contexts
-  if rule.msg:match("debug") or rule.msg:match("log") then
-    if context.function_name and context.function_name:lower():match("debug") then
-      return true
-    end
-  end
-  
-  return false
-end
-
+-- Security patterns organized by file type
 local insecure_by_ft = {
   c = {
     -- Command injection and execution
@@ -880,6 +747,140 @@ local insecure_by_ft = {
     { pat = 'guest:guest', msg = 'default credentials (guest:guest)', hl = 'DiagnosticError' },
   },
 }
+
+-- Enhanced rendering with context analysis
+function M._render_with_context_analysis(bufnr, from, to, priority)
+  local ns = vim.api.nvim_create_namespace('TracebackSecurityEnhanced')
+  
+  -- Clear previous annotations in range
+  vim.api.nvim_buf_clear_namespace(bufnr, ns, from - 1, to)
+  
+  local cfg = security_config
+  local max_anno = cfg.max_auto_annotations or 150
+  local lines = vim.api.nvim_buf_get_lines(bufnr, from-1, to, false)
+  local ft = U.get_effective_language(bufnr)
+  local rules = insecure_by_ft[ft] or insecure_by_ft.default
+  local sc_ranges = (cfg.treesitter and U.ts_available(bufnr, cfg)) and U.ts_sc_ranges(bufnr, ft, from, to) or {}
+  local anno = 0
+  local severity_score = { DiagnosticError = 3, DiagnosticWarn = 2, DiagnosticInfo = 1 }
+  local min_score = cfg.confidence_threshold and (cfg.confidence_threshold * 3) or 2
+  
+  for i, line in ipairs(lines) do
+    local line_nr = from + i - 2
+    
+    for _, r in ipairs(rules) do
+      local s, e = line:find(r.pat)
+      if s and not U.col_in_ranges(line_nr, s-1, sc_ranges) then
+        local matched = line:sub(s, e)
+        
+        -- Enhanced context analysis
+        local context = cfg.context_analysis and U.analyze_security_context(bufnr, line_nr + 1, r.pat, matched) or {}
+        
+        -- Base score from severity
+        local base = severity_score[r.hl] or 1
+        
+        -- Context-based confidence boost
+        local context_boost = context.confidence_modifiers or 0
+        
+        -- Secret heuristic bonus for token-like findings
+        local secret_ok = false
+        if r.msg:lower():match('key') or r.msg:lower():match('secret') or r.msg:lower():match('token') or r.pat:match('AKIA') or r.pat:match('xox') or r.pat:match('JWT') then
+          secret_ok = looks_like_secret(matched, cfg)
+        end
+        local secret_bonus = secret_ok and (cfg.secret_bonus or 2) or 0
+        
+        -- Priority pattern boost
+        local priority_boost = 0
+        for _, priority_pattern in ipairs(security_config.priority_patterns) do
+          if r.msg:lower():match(priority_pattern) or matched:lower():match(priority_pattern) then
+            priority_boost = 0.5
+            break
+          end
+        end
+        
+        local final_score = base + context_boost + secret_bonus + priority_boost
+        
+        -- Smart filtering based on configuration
+        if cfg.smart_filtering then
+          -- Skip low-confidence findings in low-priority renders
+          if priority == 'low' and final_score < (min_score + 0.5) then
+            goto continue
+          end
+          
+          -- Enhanced allowlist checking
+          local skip = M._check_enhanced_allowlist(matched, r, context)
+          if skip then goto continue end
+        end
+        
+        if final_score >= min_score then
+          -- Enhanced annotation with context info
+          local virt_text = {'󰯳 '..r.msg, r.hl}
+          
+          -- Add context indicators
+          if context.in_function and context.function_name then
+            virt_text[1] = virt_text[1] .. string.format(" [in %s()]", context.function_name)
+          end
+          
+          if context.in_loop then
+            virt_text[1] = virt_text[1] .. " [⟲ loop]"
+          end
+          
+          -- Add confidence indicator
+          if secret_ok then
+            virt_text[1] = virt_text[1] .. " [󰓎 high confidence]"
+          end
+          
+          vim.api.nvim_buf_set_extmark(bufnr, ns, line_nr, s-1, { 
+            end_col = e, 
+            hl_group = r.hl,
+            priority = math.floor(final_score * 10) -- Higher priority for more confident findings
+          })
+          vim.api.nvim_buf_set_extmark(bufnr, ns, line_nr, 0, {
+            virt_text = {virt_text}, 
+            virt_text_pos = 'eol',
+            priority = math.floor(final_score * 10)
+          })
+          anno = anno + 1
+          if anno >= max_anno then break end
+        end
+        ::continue::
+      end
+    end
+    if anno >= max_anno then break end
+  end
+  
+  return anno
+end
+
+-- Enhanced allowlist checking with context
+function M._check_enhanced_allowlist(matched, rule, context)
+  -- Check project allowlist
+  for _, p in ipairs(project_allowlist) do
+    if matched:match(p) then 
+      return true 
+    end
+  end
+  
+  -- Context-based smart filtering
+  if context.function_name then
+    -- Skip common test function patterns
+    local test_patterns = { "test_", "spec_", "_test", "_spec", "mock_", "stub_" }
+    for _, pattern in ipairs(test_patterns) do
+      if context.function_name:lower():match(pattern) then
+        return true
+      end
+    end
+  end
+  
+  -- Skip very common development patterns in specific contexts
+  if rule.msg:match("debug") or rule.msg:match("log") then
+    if context.function_name and context.function_name:lower():match("debug") then
+      return true
+    end
+  end
+  
+  return false
+end
 
 -- per-language Treesitter taint queries for better accuracy
 local taint_queries = {

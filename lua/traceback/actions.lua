@@ -1726,7 +1726,6 @@ function M._refactor_modernize_vars(bufnr, suggestion)
   api.nvim_buf_set_lines(bufnr, range.start[1] - 1, range["end"][1], false, lines)
   vim.notify("󰚰 Modernized variable declarations", vim.log.levels.INFO)
 end
-end
 
 function M._refactor_add_error_handling(bufnr, suggestion)
   local range = suggestion.range
