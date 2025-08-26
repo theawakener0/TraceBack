@@ -13,8 +13,8 @@ Install, open the timeline, and let TraceBack keep your edits safe, your code cl
 
 ## Features
 
-- ⚡ Configurable, throttled automatic snapshots on buffer changes (default throttle_ms = 500)  
-- 🔄 Per-buffer ring buffer of snapshots with instant restore (default max_snapshots = 200)  
+- ⚡ Configurable, throttled automatic snapshots on buffer changes (default throttle_ms = 5000)  
+- 🔄 Per-buffer ring buffer of snapshots with instant restore (default max_snapshots = 1000)  
 - 🔭 Timeline browser (Telescope) with live preview and snapshot counts  
 - ▶️ Replay snapshots as animated diffs with adjustable delay (under testing & developmet)  
 - 🧩 Language support: C, C++, Python, Lua, JavaScript, Go (Treesitter-aware)  
@@ -123,13 +123,16 @@ The plugin provides rich visual feedback:
 ## Config
 ```lua
 require('traceback').setup({
-  snapshot = { max_snapshots = 200, throttle_ms = 500 },
+  snapshot = {
+    max_snapshots = 1000,
+    throttle_ms = 5000,
+  },
   lenses = {
     code = true,
     lsp = true,
     security = true,
     auto_render = true,
-    -- debounce and event tuning for auto-render
+    -- debounce and event tuning
     debounce_ms = 120,
     event_debounce = {
       DiagnosticChanged = 80,
@@ -140,26 +143,69 @@ require('traceback').setup({
       BufEnter = 100,
       LspAttach = 50,
     },
-    max_annotations = 200,
-    scan_window = 400,
-    treesitter = true,
-    -- LSP lens options
+    max_annotations = 200, -- global cap on annotations per buffer
+    scan_window = 400,     -- lines to scan around viewport for heavy work
+    treesitter = true,     -- use Treesitter when available for better lenses
+    -- lsp lens customization
     lsp_max_per_line = 1,
     lsp_truncate = 120,
     lsp_show_codes = true,
     lsp_show_source = false,
-    -- Code lens options
+    -- code lens customization
     code_show_metrics = true, -- show params/LOC alongside complexity
+    -- Enhanced security lens settings
+    security_auto_render = true,
+    security_context_analysis = true,
+    security_smart_filtering = true,
   },
-  -- customize default keymaps:
+  -- Enhanced action system configuration
+  actions = {
+    auto_register_lens_providers = true,
+    enable_smart_suggestions = true,
+    enable_taint_analysis = true,
+    enable_context_aware_fixes = true,
+    enable_refactoring_suggestions = true,
+    max_annotations_per_provider = 50,
+    action_preview = true,
+    timeout_ms = 1000,
+    error_handling = true,
+  },
+  -- Advanced suggestion system configuration
+  suggestions = {
+    enable_complexity_analysis = true,
+    enable_pattern_detection = true,
+    enable_security_suggestions = true,
+    enable_performance_hints = true,
+    enable_comprehensive_scanning = true,
+    suggestion_confidence_threshold = 0.7,
+    max_suggestions_per_scan = 10,
+    cache_enabled = true,
+    cache_ttl_ms = 30000,
+    timeout_ms = 1000,
+    debug = false,
+  },
+  -- sensible default keymaps; users can override in setup()
   keymaps = {
-    timeline = '<Leader>tt',
-    capture = '<Leader>tc',
-    restore = '<Leader>tr',
-    replay = '<Leader>tp',
-    toggle_security = '<Leader>ts',
+    timeline = '<Leader>tt',    -- open timeline picker
+    capture = '<Leader>tc',     -- force capture
+    restore = '<Leader>tr',     -- restore last snapshot (or use :TracebackRestore {idx})
+    replay = '<Leader>tp',      -- replay snapshots
+    toggle_security = '<Leader>ts', -- toggle security lens
+    -- Enhanced action keymaps
+    actions = '<Leader>ta',     -- show actions for annotation at cursor
+    quick_fix = '<Leader>tf',   -- apply quick fix
+    explain = '<Leader>te',     -- explain annotation
+    allowlist = '<Leader>tw',   -- add to allowlist
+    suggest_improvements = '<Leader>tS', -- show buffer suggestions (capital S to avoid conflict)
+    suggest_function = '<Leader>tF',     -- show function suggestions
+    refactor = '<Leader>tR',    -- show refactoring suggestions
+    scan_comprehensive = '<Leader>tC',   -- comprehensive buffer scan
+    quickfix_captures = '<Leader>tq', -- populate quickfix with stack traces
   },
   telescope = true,
+  notifications = {
+    enabled = true,
+  },
 })
 ```
 
@@ -244,37 +290,6 @@ The suggestion engine uses advanced heuristics to analyze your code and provide:
 '<Leader>tw'  -- Add to allowlist
 '<Leader>ts'  -- Show buffer improvement suggestions  
 '<Leader>tF'  -- Show function suggestions
-```
-
-### 🔧 Configuration
-
-```lua
-require('traceback').setup({
-  -- ... existing config ...
-  
-  -- Actions and suggestions configuration
-  actions = {
-    auto_register_lens_providers = true,
-    enable_smart_suggestions = true,
-    enable_taint_analysis = true,
-    suggestion_engine = {
-      enable_complexity_analysis = true,
-      enable_pattern_detection = true, 
-      enable_security_suggestions = true,
-      enable_performance_hints = true,
-      suggestion_confidence_threshold = 0.7,
-      max_suggestions_per_scan = 10
-    },
-    keymaps = {
-      show_actions = '<Leader>ta',
-      quick_fix = '<Leader>tf',
-      explain = '<Leader>te',
-      allowlist = '<Leader>tw',
-      suggest_improvements = '<Leader>ts',
-      suggest_function = '<Leader>tF'
-    }
-  }
-})
 ```
 
 ### 🎨 Example Workflow
@@ -374,6 +389,7 @@ Supported languages and lenses:
 - Python
 - Go
 - JavaScript / Node.js
+- lua
 
 Data sources and heuristics:
 - Pattern rules were informed by public vulnerability sources and advisories (Go vulnerability DB, Node.js advisories, Python security docs) and curated examples from security research. The lens uses regex and lightweight heuristics; it does not execute code.
@@ -396,49 +412,6 @@ require('traceback').setup({
 
 Notes:
 - The lens is intended as a lightweight helper. Do not rely on it for automated secret-scanning in CI or compliance workflows use dedicated secrets-detection tools for those use cases.
-
-## Quick configuration (actions & suggestions)
-
-If actions or suggestions report "no annotation at the cursor" you most likely need to enable the providers and suggestion engine in your setup. Add the following to your Neovim config (init.lua or a plugin config file) to enable default providers, keymaps, and the suggestion engine:
-
-```lua
-require('traceback').setup({
-  lenses = {
-    code = true,
-    lsp = true,
-    security = true,
-    auto_render = true,
-    max_annotations = 200,
-    treesitter = true,
-  },
-  actions = {
-    auto_register_lens_providers = true, -- ensures providers are registered even if setup wasn't explicitly called elsewhere
-    enable_smart_suggestions = true,
-    suggestion_engine = {
-      enable_complexity_analysis = true,
-      enable_pattern_detection = true,
-      enable_security_suggestions = true,
-      enable_performance_hints = true,
-      suggestion_confidence_threshold = 0.6,
-      max_suggestions_per_scan = 8,
-      timeout_ms = 1200,
-      cache_enabled = true,
-      cache_ttl_ms = 60000,
-    },
-    keymaps = {
-      show_actions = '<Leader>ta',
-      quick_fix = '<Leader>tf',
-      explain = '<Leader>te',
-      allowlist = '<Leader>tw',
-      suggest_improvements = '<Leader>ts',
-      suggest_function = '<Leader>tF'
-    }
-  },
-  keymaps = { timeline = '<Leader>tt' },
-})
-```
-
-Notes:
 - Call `require('traceback').setup()` early in your config so providers and keymaps are registered.
 - If you prefer lazy-loading, set `auto_register_lens_providers = true` so `traceback.actions` can register providers on demand.
 - Make sure the buffer has a correct `filetype` (e.g. `:set filetype?`) — many providers are filetype-aware.

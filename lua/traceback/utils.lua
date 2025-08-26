@@ -2,6 +2,14 @@ local M = {}
 
 local api = vim.api
 
+-- Centralized notify wrapper honoring user preference
+function M.notify(msg, level, opts)
+  if vim.g.traceback_notifications_enabled == false then
+    return
+  end
+  return vim.notify(msg, level or vim.log.levels.INFO, opts)
+end
+
 -- Common validation utilities
 function M.validate_buffer(bufnr)
   return bufnr and api.nvim_buf_is_valid(bufnr)
@@ -25,7 +33,7 @@ function M.safe_execute(fn, error_msg, ...)
   local ok, result = pcall(fn, ...)
   if not ok then
     if error_msg then
-      vim.notify(error_msg .. ": " .. tostring(result), vim.log.levels.ERROR)
+  M.notify(error_msg .. ": " .. tostring(result), vim.log.levels.ERROR)
     end
     return nil, result
   end
@@ -41,7 +49,7 @@ function M.with_timeout(fn, timeout_ms, ...)
   local ok, result = pcall(fn, ...)
   
   if os.clock() - start_time > timeout_seconds then
-    vim.notify("Operation timed out after " .. timeout_ms .. "ms", vim.log.levels.WARN)
+    M.notify("Operation timed out after " .. timeout_ms .. "ms", vim.log.levels.WARN)
     return nil
   end
   
@@ -197,7 +205,7 @@ function M.benchmark(name, fn, ...)
   local result = fn(...)
   local duration = (os.clock() - start_time) * 1000
   
-  vim.notify(string.format("%s took %.2fms", name, duration), vim.log.levels.DEBUG)
+  M.notify(string.format("%s took %.2fms", name, duration), vim.log.levels.DEBUG)
   return result
 end
 

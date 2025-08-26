@@ -7,10 +7,11 @@ local cfg = {}
 
 -- Safe getter for suggestions module to avoid circular dependencies
 local function get_suggestions()
+  local U = require('traceback.utils')
   local suggestions_ok, suggestions = pcall(require, 'traceback.suggestions')
   if not suggestions_ok then
     if cfg.error_handling then
-      vim.notify("Suggestions module not available: " .. tostring(suggestions), vim.log.levels.DEBUG)
+  U.notify("Suggestions module not available: " .. tostring(suggestions), vim.log.levels.DEBUG)
     end
     return nil
   end
@@ -35,7 +36,7 @@ local function safe_execute(fn, ...)
   
   local ok, result = pcall(fn, ...)
   if not ok then
-    vim.notify("Action execution error: " .. tostring(result), vim.log.levels.ERROR)
+  U.notify("Action execution error: " .. tostring(result), vim.log.levels.ERROR)
     return nil
   end
   return result
@@ -100,7 +101,7 @@ function M.setup(opts)
       if suggestions_ok then
         suggestions.setup(cfg.suggestion_engine)
       elseif cfg.error_handling then
-        vim.notify("Failed to load suggestions module: " .. tostring(suggestions), vim.log.levels.WARN)
+  U.notify("Failed to load suggestions module: " .. tostring(suggestions), vim.log.levels.WARN)
       end
     end, 0)
   end
@@ -109,9 +110,9 @@ function M.setup(opts)
   if cfg.auto_register_lens_providers then
     local ok, err = pcall(M._register_default_providers)
     if not ok and cfg.error_handling then
-      vim.notify("TraceBack: Failed to register providers: " .. tostring(err), vim.log.levels.WARN)
+  U.notify("TraceBack: Failed to register providers: " .. tostring(err), vim.log.levels.WARN)
     elseif ok and cfg.error_handling then
-      vim.notify("TraceBack: Successfully registered " .. vim.tbl_count(providers) .. " providers", vim.log.levels.INFO)
+  U.notify("TraceBack: Successfully registered " .. vim.tbl_count(providers) .. " providers", vim.log.levels.INFO)
     end
   end
   
@@ -319,7 +320,7 @@ function M._get_smart_suggestions(bufnr, cursor_pos)
   local suggestions_ok, suggestions = pcall(suggestions_engine.analyze_and_suggest, bufnr, range)
   if not suggestions_ok then
     if cfg.error_handling then
-      vim.notify("Failed to analyze suggestions: " .. tostring(suggestions), vim.log.levels.DEBUG)
+  U.notify("Failed to analyze suggestions: " .. tostring(suggestions), vim.log.levels.DEBUG)
     end
     return {}
   end
@@ -711,14 +712,14 @@ function M.get_annotations_at_cursor(bufnr, cursor_pos)
   -- Input validation
   if not validate_buffer(bufnr) then
     if cfg.error_handling then
-      vim.notify("Invalid buffer for annotations", vim.log.levels.DEBUG)
+  U.notify("Invalid buffer for annotations", vim.log.levels.DEBUG)
     end
     return {}
   end
 
   if not validate_position(cursor_pos) then
     if cfg.error_handling then
-      vim.notify("Invalid cursor position for annotations", vim.log.levels.DEBUG)
+  U.notify("Invalid cursor position for annotations", vim.log.levels.DEBUG)
     end
     return {}
   end
@@ -726,7 +727,7 @@ function M.get_annotations_at_cursor(bufnr, cursor_pos)
   -- Ensure at least one provider is registered 
   if next(providers) == nil then
     if cfg.error_handling then
-      vim.notify("TraceBack: no providers registered. Call require('traceback.actions').setup() or enable auto_register_lens_providers in setup()", vim.log.levels.WARN)
+  U.notify("TraceBack: no providers registered. Call require('traceback.actions').setup() or enable auto_register_lens_providers in setup()", vim.log.levels.WARN)
     end
     pcall(M._register_default_providers)
   end
@@ -740,7 +741,7 @@ function M.get_annotations_at_cursor(bufnr, cursor_pos)
     -- Check timeout
     if os.clock() - start_time > timeout_seconds then
       if cfg.error_handling then
-        vim.notify("Annotation collection timeout", vim.log.levels.WARN)
+  U.notify("Annotation collection timeout", vim.log.levels.WARN)
       end
       break
     end
@@ -754,7 +755,7 @@ function M.get_annotations_at_cursor(bufnr, cursor_pos)
         end
       end
     elseif cfg.error_handling then
-      vim.notify("Provider " .. name .. " failed: " .. tostring(annotations), vim.log.levels.DEBUG)
+  U.notify("Provider " .. name .. " failed: " .. tostring(annotations), vim.log.levels.DEBUG)
     end
   end
   
@@ -786,7 +787,7 @@ function M.show_actions()
   local annotations = M.get_annotations_at_cursor(bufnr, cursor_pos)
   
   if #annotations == 0 then
-    vim.notify("󰘖 No TraceBack annotations found at cursor", vim.log.levels.INFO)
+  U.notify("󰘖 No TraceBack annotations found at cursor", vim.log.levels.INFO)
     return
   end
   
@@ -816,7 +817,7 @@ end
 
 function M.show_actions_for_annotation(annotation)
   if not annotation.actions or #annotation.actions == 0 then
-    vim.notify("󰘖 No actions available for this annotation", vim.log.levels.INFO)
+  U.notify("󰘖 No actions available for this annotation", vim.log.levels.INFO)
     return
   end
   
@@ -855,7 +856,7 @@ function M.execute_action(action, annotation)
   if handler then
     handler(annotation)
   else
-    vim.notify(string.format("󰘩 Action '%s' not implemented yet", action.title), vim.log.levels.WARN)
+  U.notify(string.format("󰘩 Action '%s' not implemented yet", action.title), vim.log.levels.WARN)
   end
 end
 
@@ -865,12 +866,12 @@ function M._handle_allowlist(annotation)
     local security_lens = require('traceback.lenses.lens_security')
     local pattern = annotation.matched_text or annotation.title
     security_lens.add_allow(pattern)
-    vim.notify(string.format("󰌾 Added '%s' to security allowlist", pattern), vim.log.levels.INFO)
+  U.notify(string.format("󰌾 Added '%s' to security allowlist", pattern), vim.log.levels.INFO)
     
     -- Re-render lenses to reflect the change
     require('traceback.lenses').render()
   else
-    vim.notify("󰘖 Allowlist action only available for security annotations", vim.log.levels.WARN)
+  U.notify("󰘖 Allowlist action only available for security annotations", vim.log.levels.WARN)
   end
 end
 
@@ -903,7 +904,7 @@ function M._handle_ignore_inline(annotation)
   local new_line = line .. ignore_comment
   
   api.nvim_buf_set_lines(bufnr, line_nr - 1, line_nr, false, { new_line })
-  vim.notify("󰘖 Added inline ignore comment", vim.log.levels.INFO)
+  U.notify("󰘖 Added inline ignore comment", vim.log.levels.INFO)
 end
 
 function M._handle_ignore_virtual(annotation)
@@ -916,7 +917,7 @@ function M._handle_ignore_virtual(annotation)
     hl_mode = 'combine'
   })
   
-  vim.notify("󰘕 Added virtual ignore marker", vim.log.levels.INFO)
+  U.notify("󰘕 Added virtual ignore marker", vim.log.levels.INFO)
 end
 
 function M._handle_explain(annotation)
@@ -949,7 +950,7 @@ function M._handle_explain(annotation)
     vim.keymap.set('n', '<Esc>', function() api.nvim_win_close(win, true) end, { buffer = buf })
     vim.keymap.set('n', 'q', function() api.nvim_win_close(win, true) end, { buffer = buf })
   else
-    vim.notify("󰋽 " .. annotation.title, vim.log.levels.INFO)
+  U.notify("󰋽 " .. annotation.title, vim.log.levels.INFO)
   end
 end
 
@@ -1254,7 +1255,7 @@ function M._apply_text_replacement(bufnr, range, new_text)
     range["end"][1] - 1, range["end"][2],
     lines)
   
-  vim.notify(string.format("󰁨 Applied fix: %s", lines[1]), vim.log.levels.INFO)
+  U.notify(string.format("󰁨 Applied fix: %s", lines[1]), vim.log.levels.INFO)
   
   -- If we added multiple lines, adjust cursor position
   if #lines > 1 then
@@ -1274,7 +1275,7 @@ function M._handle_generic_smart_fix(annotation, context)
     local comment_token = M._get_comment_token(vim.bo[bufnr].filetype)
     local new_line = comment_token .. " " .. line
     api.nvim_buf_set_lines(bufnr, range.start[1] - 1, range.start[1], false, { new_line })
-    vim.notify("󰁨 Commented out debug statement", vim.log.levels.INFO)
+  U.notify("󰁨 Commented out debug statement", vim.log.levels.INFO)
     return
   end
   

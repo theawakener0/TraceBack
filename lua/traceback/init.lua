@@ -81,12 +81,18 @@ local config = {
     quickfix_captures = '<Leader>tq', -- populate quickfix with stack traces
   },
   telescope = true,
+  notifications = {
+    enabled = true,
+  },
 }
 
 M._config = config
 
 function M.setup(user)
   M._config = vim.tbl_deep_extend('force', config, user or {})
+  -- propagate notifications toggle as a global for simple access
+  vim.g.traceback_notifications_enabled = not (M._config.notifications and M._config.notifications.enabled == false) and true or false
+  local U = require('traceback.utils')
   
   -- Initialize core components
   require('traceback.core').setup(M._config)
@@ -110,7 +116,7 @@ function M.setup(user)
       end
     end
     if #enabled_lenses > 0 then
-      vim.notify('󰈙 TraceBack enhanced lenses active: ' .. table.concat(enabled_lenses, ', '), vim.log.levels.INFO)
+      U.notify('󰈙 TraceBack enhanced lenses active: ' .. table.concat(enabled_lenses, ', '), vim.log.levels.INFO)
     end
   end)
   
@@ -127,21 +133,21 @@ function M.setup(user)
       }
     })
     
-    require('traceback.actions').setup(actions_config)
-    vim.notify('󰒓 TraceBack enhanced actions system initialized', vim.log.levels.INFO)
+  require('traceback.actions').setup(actions_config)
+  U.notify('󰒓 TraceBack enhanced actions system initialized', vim.log.levels.INFO)
   end)
   
   -- Initialize advanced suggestion system
   pcall(function()
-    require('traceback.suggestions').setup(M._config.suggestions)
-    vim.notify('󰧑 TraceBack advanced suggestions system initialized', vim.log.levels.INFO)
+  require('traceback.suggestions').setup(M._config.suggestions)
+  U.notify('󰧑 TraceBack advanced suggestions system initialized', vim.log.levels.INFO)
   end)
   
   -- Load telescope extension if available and enabled
   if M._config.telescope then
     pcall(function()
-      require('telescope').load_extension('traceback')
-      vim.notify('󰭎 TraceBack telescope extension loaded', vim.log.levels.INFO)
+  require('telescope').load_extension('traceback')
+  U.notify('󰭎 TraceBack telescope extension loaded', vim.log.levels.INFO)
     end)
   end
   
@@ -154,7 +160,7 @@ function M.setup(user)
       if vim.api.nvim_buf_is_valid(bufnr) then
         local security_lens = require('traceback.lenses.lens_security')
         security_lens.enable_auto_render(bufnr)
-        vim.notify('󰌾 TraceBack security auto-rendering enabled', vim.log.levels.INFO)
+  U.notify('󰌾 TraceBack security auto-rendering enabled', vim.log.levels.INFO)
       end
     end, 500)
   end
@@ -169,8 +175,8 @@ function M.setup(user)
     'Intelligent Auto-Rendering'
   }
   
-  vim.notify('󰈙 TraceBack enhanced plugin initialized - ' .. snapshot_info, vim.log.levels.INFO)
-  vim.notify('󰪪 Enhanced features: ' .. table.concat(features_info, ', '), vim.log.levels.INFO)
+  U.notify('󰈙 TraceBack enhanced plugin initialized - ' .. snapshot_info, vim.log.levels.INFO)
+  U.notify('󰪪 Enhanced features: ' .. table.concat(features_info, ', '), vim.log.levels.INFO)
 end
 
 -- Enhanced API functions for external use

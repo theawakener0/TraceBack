@@ -1,4 +1,5 @@
 local M = {}
+local U = require('traceback.utils')
 
 function M.setup(keymaps)
   vim.api.nvim_create_user_command('TracebackTimeline', function()
@@ -91,7 +92,7 @@ function M.setup(keymaps)
       -- Add specific pattern to allowlist
       local security_lens = require('traceback.lenses.lens_security')
       security_lens.add_allow(opts.args)
-      vim.notify(string.format("󰌾 Added '%s' to allowlist", opts.args), vim.log.levels.INFO)
+  U.notify(string.format("󰌾 Added '%s' to allowlist", opts.args), vim.log.levels.INFO)
     else
       -- Add current annotation to allowlist
       require('traceback.actions').allowlist_at_cursor()
@@ -109,7 +110,7 @@ function M.setup(keymaps)
         return
       end
     end
-    vim.notify("󰘖 No refactoring suggestions at cursor", vim.log.levels.INFO)
+  U.notify("󰘖 No refactoring suggestions at cursor", vim.log.levels.INFO)
   end, {
     desc = " 󰖷 Show refactoring suggestions for current location"
   })
@@ -138,7 +139,7 @@ function M.setup(keymaps)
         result.metrics.performance and #result.metrics.performance.performance_issues or 0
       )
       
-      vim.notify(summary, vim.log.levels.INFO)
+  U.notify(summary, vim.log.levels.INFO)
       
       -- Optionally show detailed suggestions
       if #result.suggestions > 0 then
@@ -147,9 +148,9 @@ function M.setup(keymaps)
     elseif scan_type == "security" then
       local init = require('traceback.init')
       local count = init.trigger_security_scan(bufnr)
-      vim.notify(string.format("󰯳 Security scan complete: %d issues found", count), vim.log.levels.INFO)
+  U.notify(string.format("󰯳 Security scan complete: %d issues found", count), vim.log.levels.INFO)
     else
-      vim.notify("󰘖 Unknown scan type. Use 'comprehensive' or 'security'", vim.log.levels.WARN)
+  U.notify("󰘖 Unknown scan type. Use 'comprehensive' or 'security'", vim.log.levels.WARN)
     end
   end, {
     nargs = '?',
@@ -172,9 +173,9 @@ function M.setup(keymaps)
       message = message .. "\nSuggestions:\n" .. table.concat(health.suggestions, "\n")
     end
     
-    vim.notify(message, health.status == "ok" and vim.log.levels.INFO or vim.log.levels.WARN)
+  U.notify(message, health.status == "ok" and vim.log.levels.INFO or vim.log.levels.WARN)
   end, {
-    desc = " 🏥 Check TraceBack component health"
+    desc = " 󰗠 Check TraceBack component health"
   })
 
   -- Security-specific commands
@@ -182,7 +183,7 @@ function M.setup(keymaps)
     local bufnr = vim.api.nvim_get_current_buf()
     local security_lens = require('traceback.lenses.lens_security')
     security_lens.enable_auto_render(bufnr)
-    vim.notify("󰯳 Security auto-rendering enabled", vim.log.levels.INFO)
+  U.notify("󰯳 Security auto-rendering enabled", vim.log.levels.INFO)
   end, {
     desc = " 󰯳 Enable security lens auto-rendering"
   })
@@ -191,7 +192,7 @@ function M.setup(keymaps)
     local bufnr = vim.api.nvim_get_current_buf()
     local security_lens = require('traceback.lenses.lens_security')
     security_lens.disable_auto_render(bufnr)
-    vim.notify("󰯳 Security auto-rendering disabled", vim.log.levels.INFO)
+  U.notify("󰯳 Security auto-rendering disabled", vim.log.levels.INFO)
   end, {
     desc = " 󰯳 Disable security lens auto-rendering"
   })
@@ -227,12 +228,32 @@ function M.setup(keymaps)
       vim.keymap.set('n', '<Esc>', function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
       vim.keymap.set('n', 'q', function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
     else
-      vim.notify("󰘖 Unknown config action. Use 'show'", vim.log.levels.WARN)
+  U.notify("󰘖 Unknown config action. Use 'show'", vim.log.levels.WARN)
     end
   end, {
     nargs = '?',
     complete = function() return {'show'} end,
     desc = " 󰮷 Show TraceBack configuration"
+  })
+
+  -- Notifications toggle
+  vim.api.nvim_create_user_command('TracebackNotifications', function(opts)
+    local arg = (opts.args or ''):lower()
+    if arg == 'on' or arg == 'enable' then
+      vim.g.traceback_notifications_enabled = true
+      U.notify('󰍡 TraceBack notifications enabled', vim.log.levels.INFO)
+    elseif arg == 'off' or arg == 'disable' then
+      vim.g.traceback_notifications_enabled = false
+      -- Provide a one-time echo since notifications are disabled
+      vim.api.nvim_echo({{"TraceBack notifications disabled", "WarningMsg"}}, false, {})
+    else
+      local status = (vim.g.traceback_notifications_enabled == false) and 'off' or 'on'
+      U.notify('󰍡 TraceBack notifications are ' .. status .. " (use :TracebackNotifications on|off)", vim.log.levels.INFO)
+    end
+  end, {
+    nargs = '?',
+    complete = function() return {'on', 'off', 'enable', 'disable'} end,
+    desc = " 󰍡 Toggle TraceBack notifications"
   })
 
   require('traceback.lenses').setup_commands()
