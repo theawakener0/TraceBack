@@ -250,21 +250,51 @@ end
 
 local function replay(bufnr, from_idx, to_idx, delay_ms)
   local tl = get_timeline(bufnr)
+  if not tl or #tl.snapshots == 0 then return end
+
   from_idx = math.max(1, from_idx or 1)
   to_idx = math.min(#tl.snapshots, to_idx or #tl.snapshots)
+  if from_idx > to_idx then return end
   delay_ms = delay_ms or 80
-  local i = from_idx
+
+  -- copy snapshot slice to avoid timeline mutations during replay
+  local snaps = {}
+  for i = from_idx, to_idx do snaps[#snaps + 1] = tl.snapshots[i] end
+
+  -- capture window so we restore cursor in the same view when possible
+  local win = vim.api.nvim_get_current_win()
+  local count = #snaps
+  local idx = 1
   local timer = vim.loop.new_timer()
-  timer:start(0, delay_ms, function()
-    if i > to_idx then
-      timer:stop(); timer:close()
+
+  timer:start(0, delay_ms, vim.schedule_wrap(function()
+    if idx > count then
+      pcall(function() timer:stop(); timer:close() end)
       return
     end
-    vim.schedule(function()
-      restore_snapshot(bufnr, i)
-    end)
-    i = i + 1
-  end)
+
+    local s = snaps[idx]
+    if s and vim.api.nvim_buf_is_valid(bufnr) then
+      -- apply full buffer content
+      pcall(vim.api.nvim_buf_set_lines, bufnr, 0, -1, false, s.lines)
+
+      -- set cursor in the same window if still valid
+      pcall(function()
+        if vim.api.nvim_win_is_valid(win) then
+          vim.api.nvim_win_set_cursor(win, s.cursor)
+        else
+          -- fallback: set cursor in current window
+          pcall(vim.api.nvim_win_set_cursor, 0, s.cursor)
+        end
+      end)
+
+      -- update timeline index to reflect current replay position
+      local key = buf_key(bufnr)
+      if timelines[key] then timelines[key].index = from_idx + idx - 1 end
+    end
+
+    idx = idx + 1
+  end))
 end
 
 -- migrate timeline when a buff's filename (key) changes
@@ -388,6 +418,16 @@ function M.setup(cfg)
   cfg.snapshot.throttle_ms = cfg.snapshot.throttle_ms or 5000
   cfg.lenses = cfg.lenses or { auto_render = true }
 
+  -- default keymaps (can be overridden by user cfg.keymaps)
+  cfg.keymaps = cfg.keymaps or {
+    -- play last N snapshots: <Leader>tp will play last 5 by default
+    play_last = '<Leader>tp',
+    -- restore last snapshot: <Leader>tr
+    restore_last = '<Leader>tr',
+    -- numeric quick replays: <Leader>t1 .. <Leader>t9 replay last 1..9 snapshots
+    quick_prefix = '<Leader>t',
+  }
+
   M.cfg = cfg
 
   -- load persisted timelines on setup
@@ -442,6 +482,46 @@ function M.setup(cfg)
       end
     end,
   })
+
+  -- register default keymaps: allow user to override by passing cfg.keymaps
+  pcall(function()
+    local km = cfg.keymaps
+    if km.play_last then
+      vim.keymap.set('n', km.play_last, function()
+        local bufnr = vim.api.nvim_get_current_buf()
+        local tl = get_timeline(bufnr)
+        local n = 5
+        local to = tl and #tl.snapshots or 0
+        local from = math.max(1, to - n + 1)
+        M.replay(from, to, 120, bufnr)
+      end, { silent = true, desc = 'TraceBack: play last snapshots' })
+    end
+
+    if km.restore_last then
+      vim.keymap.set('n', km.restore_last, function()
+        local bufnr = vim.api.nvim_get_current_buf()
+        local tl = get_timeline(bufnr)
+        if tl and #tl.snapshots > 0 then M.restore(#tl.snapshots, bufnr) end
+      end, { silent = true, desc = 'TraceBack: restore last snapshot' })
+    end
+
+    if km.quick_prefix then
+      -- map <Leader>t1 .. <Leader>t9 to replay last 1..9 snapshots
+      for n = 1, 9 do
+        local lhs = km.quick_prefix .. tostring(n)
+        vim.keymap.set('n', lhs, (function(n)
+          return function()
+            local bufnr = vim.api.nvim_get_current_buf()
+            local tl = get_timeline(bufnr)
+            local to = tl and #tl.snapshots or 0
+            if to == 0 then return end
+            local from = math.max(1, to - n + 1)
+            M.replay(from, to, 100, bufnr)
+          end
+        end)(n), { silent = true, desc = 'TraceBack: replay last ' .. tostring(n) })
+      end
+    end
+  end)
 end
 
 function M.timeline(bufnr)
