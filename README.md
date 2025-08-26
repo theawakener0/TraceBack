@@ -16,7 +16,7 @@ Install, open the timeline, and let TraceBack keep your edits safe, your code cl
 - ⚡ Configurable, throttled automatic snapshots on buffer changes (default throttle_ms = 500)  
 - 🔄 Per-buffer ring buffer of snapshots with instant restore (default max_snapshots = 200)  
 - 🔭 Timeline browser (Telescope) with live preview and snapshot counts  
-- ▶️ Replay snapshots as animated diffs with adjustable delay  
+- ▶️ Replay snapshots as animated diffs with adjustable delay (under testing & developmet)  
 - 🧩 Language support: C, C++, Python, Lua, JavaScript, Go (Treesitter-aware)  
 - 🔍 Lenses with rich visual indicators:
   - 💡 Code Lens — inline complexity and structure hints (color-coded)
