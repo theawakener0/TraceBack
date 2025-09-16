@@ -257,7 +257,10 @@ function M.history_picker()
     end
   end
 
-  if #items == 0 then return end
+  if #items == 0 then
+    pcall(vim.api.nvim_echo, { { 'TraceBack: Nothing to show (no snapshots or undo history)', 'WarningMsg' } }, true, {})
+    return
+  end
 
   -- config
   local cfg = {}
@@ -340,7 +343,10 @@ function M.undo_picker()
   local cur_buf = vim.api.nvim_get_current_buf()
   local undo = require('traceback.undo')
   local ulist = undo.tree_items(cur_buf)
-  if #ulist == 0 then return end
+  if #ulist == 0 then
+    pcall(vim.api.nvim_echo, { { 'TraceBack: No undo history for this buffer', 'WarningMsg' } }, true, {})
+    return
+  end
   local items = {}
   for _, u in ipairs(ulist) do
     table.insert(items, { kind = 'undo', display = u.display, ordinal = tostring(u.seq), seq = u.seq, entry = u.entry })

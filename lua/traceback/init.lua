@@ -40,6 +40,12 @@ local config = {
   ui = {
     -- picker backend: 'auto' (try telescope, then mini.pick, then fallback), 'telescope', or 'mini'
     picker = 'auto',
+    -- undo tree rendering options
+    undo_tree = {
+      style = 'unicode',  -- 'unicode' or 'ascii' connectors
+      relative = true,    -- show relative time labels like "3m ago"
+      show_depth = false, -- append branch depth badges [d:N]
+    },
   },
   -- sensible default keymaps; users can override in setup()
   keymaps = {
@@ -58,6 +64,7 @@ local config = {
 M._config = config
 
 function M.setup(user)
+  vim.g.traceback_setup_called = true
   M._config = vim.tbl_deep_extend('force', config, user or {})
   local U = require('traceback.utils')
   

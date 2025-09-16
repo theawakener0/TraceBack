@@ -15,7 +15,10 @@ function M.timeline_picker()
   local pick = ensure_mini()
   if not pick then return end
   local items = timeline_items()
-  if #items == 0 then return end
+  if #items == 0 then
+    pcall(vim.api.nvim_echo, { { 'TraceBack: No snapshots for this buffer', 'WarningMsg' } }, true, {})
+    return
+  end
   pick.pick(
     items,
     { prompt = 'TraceBack Timeline', format_item = function(e) return e.display end },
@@ -58,7 +61,10 @@ function M.history_picker()
   local items = {}
   for _, e in ipairs(tb_items) do table.insert(items, { kind = 'snapshot', display = e.display, idx = e.idx }) end
   for _, u in ipairs(undo_entries) do table.insert(items, { kind = 'undo', display = undo.format_entry(u), seq = u.seq }) end
-  if #items == 0 then return end
+  if #items == 0 then
+    pcall(vim.api.nvim_echo, { { 'TraceBack: Nothing to show (no snapshots or undo history)', 'WarningMsg' } }, true, {})
+    return
+  end
   pick.pick(
     items,
     { prompt = 'TraceBack History', format_item = function(e) return e.display end },
@@ -80,7 +86,10 @@ function M.undo_picker()
   local cur_buf = vim.api.nvim_get_current_buf()
   local undo = require('traceback.undo')
   local ulist = undo.tree_items(cur_buf)
-  if #ulist == 0 then return end
+  if #ulist == 0 then
+    pcall(vim.api.nvim_echo, { { 'TraceBack: No undo history for this buffer', 'WarningMsg' } }, true, {})
+    return
+  end
   local items = {}
   for _, u in ipairs(ulist) do table.insert(items, { kind = 'undo', display = u.display, seq = u.seq }) end
   pick.pick(

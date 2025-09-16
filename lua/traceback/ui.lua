@@ -37,6 +37,11 @@ function M.timeline_picker()
   end
   -- Fallback: simple selector without preview
   local items = require('traceback.telescope').timeline_items()
+  if #items == 0 then
+    -- Provide quiet feedback instead of doing nothing
+    pcall(vim.api.nvim_echo, { { 'TraceBack: No snapshots for this buffer', 'WarningMsg' } }, true, {})
+    return
+  end
   fallback_select(items, function(entry)
     local core = require('traceback.core')
     local ok_restore = core.restore(entry.idx)
@@ -83,7 +88,10 @@ function M.undo_picker()
   local cur_buf = vim.api.nvim_get_current_buf()
   local undo = require('traceback.undo')
   local entries = undo.entries(cur_buf)
-  if #entries == 0 then return end
+  if #entries == 0 then
+    pcall(vim.api.nvim_echo, { { 'TraceBack: No undo history for this buffer', 'WarningMsg' } }, true, {})
+    return
+  end
   local items = {}
   for _, e in ipairs(entries) do table.insert(items, { display = undo.format_entry(e), seq = e.seq }) end
   fallback_select(items, function(entry)
@@ -111,7 +119,10 @@ function M.history_picker()
   local entries = {}
   for _, e in ipairs(tb_items) do table.insert(entries, { kind = 'snapshot', display = e.display, idx = e.idx }) end
   for _, u in ipairs(undo_items) do table.insert(entries, { kind = 'undo', display = undo.format_entry(u), seq = u.seq }) end
-  if #entries == 0 then return end
+  if #entries == 0 then
+    pcall(vim.api.nvim_echo, { { 'TraceBack: Nothing to show (no snapshots or undo history)', 'WarningMsg' } }, true, {})
+    return
+  end
   fallback_select(entries, function(entry)
     if entry.kind == 'snapshot' then
       local core = require('traceback.core')
