@@ -3,9 +3,21 @@ local U = require('traceback.utils')
 
 function M.setup(keymaps)
   vim.api.nvim_create_user_command('TracebackTimeline', function()
-    require('traceback.telescope').timeline_picker()
+    require('traceback.ui').timeline_picker()
   end, { 
     desc = " 󰈙 Open TraceBack timeline browser - navigate through buffer snapshots with preview" 
+  })
+
+  vim.api.nvim_create_user_command('TracebackHistory', function()
+    require('traceback.ui').history_picker()
+  end, {
+    desc = " 󰔚 Open TraceBack history (Timeline + Undo)"
+  })
+
+  vim.api.nvim_create_user_command('TracebackLenses', function()
+    require('traceback.ui').lenses_picker()
+  end, {
+    desc = " 󰍉 Toggle TraceBack lenses (code | lsp | security)"
   })
 
   vim.api.nvim_create_user_command('TracebackCapture', function()
@@ -41,139 +53,57 @@ function M.setup(keymaps)
     desc = " 󰐊 Replay snapshot sequence - :TracebackReplay {from} {to} {delay_ms}"
   })
 
-  -- Enhanced Actions and suggestions commands
-  vim.api.nvim_create_user_command('TracebackActions', function()
-    require('traceback.actions').show_actions()
+  vim.api.nvim_create_user_command('TracebackReplayCancel', function()
+    require('traceback.core').replay_cancel()
   end, {
-    desc = " 󰒓 Show TraceBack actions for annotation at cursor"
+    desc = " 󰜺 Cancel an ongoing replay"
   })
 
-  vim.api.nvim_create_user_command('TracebackSuggest', function(opts)
-    local scope = opts.args or "buffer"
-    if scope == "buffer" then
-      require('traceback.actions').show_suggestions_for_buffer()
-    elseif scope == "function" then
-      require('traceback.actions').show_suggestions_for_function()
-    else
-      require('traceback.actions').show_actions()
-    end
-  end, {
-    nargs = '?',
-    complete = function() return {'cursor', 'function', 'buffer'} end,
-    desc = " 󰧑 Show TraceBack suggestions - cursor/function/buffer scope"
-  })
-
-  vim.api.nvim_create_user_command('TracebackSuggestBuffer', function()
-    require('traceback.actions').show_suggestions_for_buffer()
-  end, {
-    desc = " 󰧑 Show improvement suggestions for entire buffer"
-  })
-
-  vim.api.nvim_create_user_command('TracebackSuggestFunction', function()
-    require('traceback.actions').show_suggestions_for_function()
-  end, {
-    desc = " 󰧑 Show suggestions for current function"
-  })
-
-  vim.api.nvim_create_user_command('TracebackQuickFix', function()
-    require('traceback.actions').quick_fix_at_cursor()
-  end, {
-    desc = " 󰁨 Apply quick fix for annotation at cursor"
-  })
-
-  vim.api.nvim_create_user_command('TracebackExplain', function()
-    require('traceback.actions').explain_at_cursor()
-  end, {
-    desc = " 󰋽 Explain annotation at cursor"
-  })
-
-  vim.api.nvim_create_user_command('TracebackAllowlist', function(opts)
-    if opts.args and opts.args ~= '' then
-      -- Add specific pattern to allowlist
-      local security_lens = require('traceback.lenses.lens_security')
-      security_lens.add_allow(opts.args)
-  U.notify(string.format("󰌾 Added '%s' to allowlist", opts.args), vim.log.levels.INFO)
-    else
-      -- Add current annotation to allowlist
-      require('traceback.actions').allowlist_at_cursor()
-    end
-  end, {
-    nargs = '?',
-    desc = " 󰌾 Add pattern to allowlist"
-  })
-
-  vim.api.nvim_create_user_command('TracebackRefactor', function()
-    local annotations = require('traceback.actions').get_annotations_at_cursor()
-    for _, annotation in ipairs(annotations) do
-      if annotation.type == "suggestion" and annotation.suggestion_data.type == "refactor" then
-        require('traceback.actions')._handle_explain(annotation)
-        return
-      end
-    end
-  U.notify("󰘖 No refactoring suggestions at cursor", vim.log.levels.INFO)
-  end, {
-    desc = " 󰖷 Show refactoring suggestions for current location"
-  })
+  -- Actions/suggestions commands removed per refactor
 
   -- Enhanced scanning commands
-  vim.api.nvim_create_user_command('TracebackScan', function(opts)
-    local scan_type = opts.args or "comprehensive"
-    local bufnr = vim.api.nvim_get_current_buf()
-    
-    if scan_type == "comprehensive" then
-      local suggestions = require('traceback.suggestions')
-      local result = suggestions.scan_buffer_comprehensive(bufnr)
-      
-      -- Show scan results
-      local summary = string.format(
-        "󰋫 Buffer Scan Results:\n" ..
-        "Quality Score: %d/100\n" ..
-        "Maintainability Index: %d/100\n" ..
-        "Suggestions: %d\n" ..
-        "Security Issues: %d\n" ..
-        "Performance Issues: %d",
-        result.quality_score,
-        result.maintainability_index,
-        #result.suggestions,
-        result.metrics.security and result.metrics.security.vulnerability_count or 0,
-        result.metrics.performance and #result.metrics.performance.performance_issues or 0
-      )
-      
-  U.notify(summary, vim.log.levels.INFO)
-      
-      -- Optionally show detailed suggestions
-      if #result.suggestions > 0 then
-        require('traceback.actions')._show_suggestions_picker(result.suggestions, "Comprehensive Scan Results")
-      end
-    elseif scan_type == "security" then
-      local init = require('traceback.init')
-      local count = init.trigger_security_scan(bufnr)
-  U.notify(string.format("󰯳 Security scan complete: %d issues found", count), vim.log.levels.INFO)
-    else
-  U.notify("󰘖 Unknown scan type. Use 'comprehensive' or 'security'", vim.log.levels.WARN)
-    end
-  end, {
-    nargs = '?',
-    complete = function() return {'comprehensive', 'security'} end,
-    desc = " 󰋫 Perform comprehensive buffer analysis"
-  })
+  -- Scanning/suggestion commands removed
 
   vim.api.nvim_create_user_command('TracebackHealth', function()
     local init = require('traceback.init')
     local health = init.health_check()
     
+    -- Render health details in a scratch window (quiet policy)
+    local lines = {}
     local status_icon = health.status == "ok" and "󰗠" or "󰔶"
-    local message = string.format("%s TraceBack Health: %s", status_icon, health.status)
-    
+    table.insert(lines, string.format("%s TraceBack Health: %s", status_icon, health.status))
     if #health.issues > 0 then
-      message = message .. "\nIssues:\n" .. table.concat(health.issues, "\n")
+      table.insert(lines, "")
+      table.insert(lines, "Issues:")
+      for _, m in ipairs(health.issues) do table.insert(lines, "  - " .. m) end
     end
-    
     if #health.suggestions > 0 then
-      message = message .. "\nSuggestions:\n" .. table.concat(health.suggestions, "\n")
+      table.insert(lines, "")
+      table.insert(lines, "Suggestions:")
+      for _, m in ipairs(health.suggestions) do table.insert(lines, "  - " .. m) end
     end
-    
-  U.notify(message, health.status == "ok" and vim.log.levels.INFO or vim.log.levels.WARN)
+
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(buf, 'filetype', 'markdown')
+    vim.api.nvim_buf_set_option(buf, 'modifiable', false)
+
+    local width = math.min(100, vim.o.columns - 6)
+    local height = math.min(20, vim.o.lines - 6)
+    local win = vim.api.nvim_open_win(buf, true, {
+      relative = 'editor',
+      width = width,
+      height = height,
+      col = math.floor((vim.o.columns - width) / 2),
+      row = math.floor((vim.o.lines - height) / 2),
+      border = 'rounded',
+      style = 'minimal',
+      title = ' TraceBack Health ',
+      title_pos = 'center',
+    })
+    -- Close helpers
+    vim.keymap.set('n', '<Esc>', function() pcall(vim.api.nvim_win_close, win, true) end, { buffer = buf })
+    vim.keymap.set('n', 'q', function() pcall(vim.api.nvim_win_close, win, true) end, { buffer = buf })
   end, {
     desc = " 󰗠 Check TraceBack component health"
   })
@@ -183,7 +113,7 @@ function M.setup(keymaps)
     local bufnr = vim.api.nvim_get_current_buf()
     local security_lens = require('traceback.lenses.lens_security')
     security_lens.enable_auto_render(bufnr)
-  U.notify("󰯳 Security auto-rendering enabled", vim.log.levels.INFO)
+  U.lens_notify("󰯳 Security auto-rendering enabled", vim.log.levels.INFO)
   end, {
     desc = " 󰯳 Enable security lens auto-rendering"
   })
@@ -192,12 +122,12 @@ function M.setup(keymaps)
     local bufnr = vim.api.nvim_get_current_buf()
     local security_lens = require('traceback.lenses.lens_security')
     security_lens.disable_auto_render(bufnr)
-  U.notify("󰯳 Security auto-rendering disabled", vim.log.levels.INFO)
+  U.lens_notify("󰯳 Security auto-rendering disabled", vim.log.levels.INFO)
   end, {
     desc = " 󰯳 Disable security lens auto-rendering"
   })
 
-  -- Configuration commands
+  -- Configuration commands (show only)
   vim.api.nvim_create_user_command('TracebackConfig', function(opts)
     local action = opts.args or "show"
     local init = require('traceback.init')
@@ -227,33 +157,11 @@ function M.setup(keymaps)
       -- Close window on escape or q
       vim.keymap.set('n', '<Esc>', function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
       vim.keymap.set('n', 'q', function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
-    else
-  U.notify("󰘖 Unknown config action. Use 'show'", vim.log.levels.WARN)
     end
   end, {
     nargs = '?',
     complete = function() return {'show'} end,
     desc = " 󰮷 Show TraceBack configuration"
-  })
-
-  -- Notifications toggle
-  vim.api.nvim_create_user_command('TracebackNotifications', function(opts)
-    local arg = (opts.args or ''):lower()
-    if arg == 'on' or arg == 'enable' then
-      vim.g.traceback_notifications_enabled = true
-      U.notify('󰍡 TraceBack notifications enabled', vim.log.levels.INFO)
-    elseif arg == 'off' or arg == 'disable' then
-      vim.g.traceback_notifications_enabled = false
-      -- Provide a one-time echo since notifications are disabled
-      vim.api.nvim_echo({{"TraceBack notifications disabled", "WarningMsg"}}, false, {})
-    else
-      local status = (vim.g.traceback_notifications_enabled == false) and 'off' or 'on'
-      U.notify('󰍡 TraceBack notifications are ' .. status .. " (use :TracebackNotifications on|off)", vim.log.levels.INFO)
-    end
-  end, {
-    nargs = '?',
-    complete = function() return {'on', 'off', 'enable', 'disable'} end,
-    desc = " 󰍡 Toggle TraceBack notifications"
   })
 
   require('traceback.lenses').setup_commands()
@@ -267,21 +175,14 @@ function M.setup(keymaps)
   
   -- Core keymaps
   map(keymaps.timeline, function() vim.cmd('TracebackTimeline') end, "TraceBack: Timeline browser")
+  if keymaps.history then
+    map(keymaps.history, function() vim.cmd('TracebackHistory') end, "TraceBack: History browser")
+  end
   map(keymaps.capture, function() vim.cmd('TracebackCapture') end, "TraceBack: Force capture")
   map(keymaps.restore, function() vim.cmd('TracebackRestore 1') end, "TraceBack: Restore latest snapshot")
   map(keymaps.replay, function() vim.cmd('TracebackReplay 1 2 100') end, "TraceBack: Replay snapshots")
   map(keymaps.toggle_security, function() vim.cmd('TracebackLensesToggle security') end, "TraceBack: Toggle security lens")
-  
-  -- Enhanced action keymaps
-  map(keymaps.actions, function() vim.cmd('TracebackActions') end, "TraceBack: Show actions")
-  map(keymaps.quick_fix, function() vim.cmd('TracebackQuickFix') end, "TraceBack: Apply quick fix")
-  map(keymaps.explain, function() vim.cmd('TracebackExplain') end, "TraceBack: Explain annotation")
-  map(keymaps.allowlist, function() vim.cmd('TracebackAllowlist') end, "TraceBack: Add to allowlist")
-  map(keymaps.suggest_improvements, function() vim.cmd('TracebackSuggestBuffer') end, "TraceBack: Buffer suggestions")
-  map(keymaps.suggest_function, function() vim.cmd('TracebackSuggestFunction') end, "TraceBack: Function suggestions")
-  map(keymaps.refactor, function() vim.cmd('TracebackRefactor') end, "TraceBack: Refactoring suggestions")
-  map(keymaps.scan_comprehensive, function() vim.cmd('TracebackScan comprehensive') end, "TraceBack: Comprehensive scan")
-  map(keymaps.quickfix_captures, function() vim.cmd('TracebackQuickfixCaptures') end, "TraceBack: Quickfix captures")
+  -- Actions/suggestions keymaps removed
 end
 
 return M

@@ -2,11 +2,25 @@ local M = {}
 
 local api = vim.api
 
--- Centralized notify wrapper honoring user preference
+-- Centralized notification policy
+-- General notifications are silenced unless they are errors.
+-- Use lens_notify and lsp_notify for user-facing lens/LSP messages.
 function M.notify(msg, level, opts)
-  if vim.g.traceback_notifications_enabled == false then
-    return
+  local lvl = level or vim.log.levels.INFO
+  if lvl == vim.log.levels.ERROR then
+    return vim.notify(msg, lvl, opts)
   end
+  -- non-error notifications are ignored by default
+  return nil
+end
+
+-- Always surface lens-related notifications (UX for lenses)
+function M.lens_notify(msg, level, opts)
+  return vim.notify(msg, level or vim.log.levels.INFO, opts)
+end
+
+-- Always surface LSP-related notifications
+function M.lsp_notify(msg, level, opts)
   return vim.notify(msg, level or vim.log.levels.INFO, opts)
 end
 
@@ -33,7 +47,7 @@ function M.safe_execute(fn, error_msg, ...)
   local ok, result = pcall(fn, ...)
   if not ok then
     if error_msg then
-  M.notify(error_msg .. ": " .. tostring(result), vim.log.levels.ERROR)
+      M.notify(error_msg .. ": " .. tostring(result), vim.log.levels.ERROR)
     end
     return nil, result
   end
@@ -49,6 +63,7 @@ function M.with_timeout(fn, timeout_ms, ...)
   local ok, result = pcall(fn, ...)
   
   if os.clock() - start_time > timeout_seconds then
+    -- timeouts are treated as non-error notices; suppressed by default
     M.notify("Operation timed out after " .. timeout_ms .. "ms", vim.log.levels.WARN)
     return nil
   end
@@ -205,6 +220,7 @@ function M.benchmark(name, fn, ...)
   local result = fn(...)
   local duration = (os.clock() - start_time) * 1000
   
+  -- benchmark messages are debug-level; suppressed by default
   M.notify(string.format("%s took %.2fms", name, duration), vim.log.levels.DEBUG)
   return result
 end

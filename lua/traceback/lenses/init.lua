@@ -34,7 +34,7 @@ local cfg = {
 local utils_ok, utils = pcall(require, 'traceback.lenses.utils')
 if not utils_ok then
   vim.schedule(function()
-  U.notify('TraceBack: failed to load lenses.utils: ' .. tostring(utils), vim.log.levels.WARN)
+    U.lens_notify('TraceBack: failed to load lenses.utils: ' .. tostring(utils), vim.log.levels.WARN)
   end)
   utils = nil
 end
@@ -43,15 +43,15 @@ local modules = {}
 do
   local ok_code, mod_code = pcall(require, 'traceback.lenses.lens_code')
   if ok_code then modules.code = mod_code else vim.schedule(function()
-  U.notify('TraceBack: failed to load code lens: ' .. tostring(mod_code), vim.log.levels.WARN)
+    U.lens_notify('TraceBack: failed to load code lens: ' .. tostring(mod_code), vim.log.levels.WARN)
   end) end
   local ok_lsp, mod_lsp = pcall(require, 'traceback.lenses.lens_lsp')
   if ok_lsp then modules.lsp = mod_lsp else vim.schedule(function()
-  U.notify('TraceBack: failed to load LSP lens: ' .. tostring(mod_lsp), vim.log.levels.WARN)
+    U.lens_notify('TraceBack: failed to load LSP lens: ' .. tostring(mod_lsp), vim.log.levels.WARN)
   end) end
   local ok_sec, mod_sec = pcall(require, 'traceback.lenses.lens_security')
   if ok_sec then modules.security = mod_sec else vim.schedule(function()
-  U.notify('TraceBack: failed to load security lens: ' .. tostring(mod_sec), vim.log.levels.WARN)
+    U.lens_notify('TraceBack: failed to load security lens: ' .. tostring(mod_sec), vim.log.levels.WARN)
   end) end
 end
 
@@ -73,7 +73,7 @@ local function schedule_render(bufnr, delay)
     if scheduled_buf and vim.api.nvim_buf_is_loaded(scheduled_buf) then
       local ok, err = pcall(M.render, scheduled_buf)
       if not ok and err then
-  U.notify('TraceBack lenses render failed: ' .. tostring(err), vim.log.levels.WARN)
+        U.notify('TraceBack lenses render failed: ' .. tostring(err), vim.log.levels.ERROR)
       end
     end
   end))
@@ -110,7 +110,7 @@ function M.render(bufnr, user_cfg)
   local function safe_render(name, fn)
     local ok_r, res = pcall(fn, bufnr, ns, cfg, from, to)
     if not ok_r then
-  U.notify('TraceBack ' .. name .. ' lens error: ' .. tostring(res), vim.log.levels.WARN)
+      U.notify('TraceBack ' .. name .. ' lens error: ' .. tostring(res), vim.log.levels.ERROR)
       return 0
     end
     return res or 0
@@ -130,7 +130,7 @@ function M.setup_commands()
   vim.api.nvim_create_user_command('TracebackLenses', function() 
     local total = M.render()
     if total and total > 0 then
-  U.notify('󰍉 Rendered ' .. total .. ' lens annotations', vim.log.levels.INFO)
+      U.lens_notify('󰍉 Rendered ' .. total .. ' lens annotations', vim.log.levels.INFO)
     end
   end, { 
     desc = " 󰍉 Render all active lenses - show code insights, debug info, and security warnings" 
@@ -169,7 +169,7 @@ function M.setup_commands()
       return count
     end)
     add(ok_render, 'protected render call')
-  U.notify('TraceBack lenses health:\n' .. table.concat(msgs, '\n'), vim.log.levels.INFO)
+    U.lens_notify('TraceBack lenses health:\n' .. table.concat(msgs, '\n'), vim.log.levels.INFO)
   end, {
     desc = ' 󰈞 TraceBack lenses health check - diagnose rendering issues'
   })
@@ -186,7 +186,7 @@ function M.setup_commands()
     
     local status = cfg[which] and 'enabled' or 'disabled'
     local icon = icons[which] or '󰒓'
-  U.notify(icon .. ' ' .. which:gsub('^%l', string.upper) .. ' lens ' .. status, vim.log.levels.INFO)
+    U.lens_notify(icon .. ' ' .. which:gsub('^%l', string.upper) .. ' lens ' .. status, vim.log.levels.INFO)
   M.render()
   end, { 
     nargs = 1, 
@@ -200,7 +200,7 @@ function M.setup_commands()
     local lens = modules.security
     if lens and lens.add_allow then 
       lens.add_allow(arg)
-  U.notify('󰌾 Added security allowlist entry: ' .. arg, vim.log.levels.INFO)
+      U.lens_notify('󰌾 Added security allowlist entry: ' .. arg, vim.log.levels.INFO)
     end
     M.render()
   end, { 
@@ -214,7 +214,7 @@ function M.setup_commands()
     local val = tonumber(parts[2]) or parts[2]
     if key and val ~= nil then 
       cfg[key] = val 
-  U.notify('󰒓 Set ' .. key .. ' = ' .. tostring(val), vim.log.levels.INFO)
+      U.lens_notify('󰒓 Set ' .. key .. ' = ' .. tostring(val), vim.log.levels.INFO)
     end
     M.render()
   end, { 

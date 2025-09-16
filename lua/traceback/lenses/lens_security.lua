@@ -1,4 +1,5 @@
 local U = require('traceback.lenses.utils')
+local TB = require('traceback.utils')
 
 local M = {}
 
@@ -213,7 +214,8 @@ function M._perform_auto_render(bufnr, priority, event_type)
   local should_render, reason = U.should_render_range(bufnr, from, to, security_config.max_auto_annotations)
   if not should_render then
     vim.schedule(function()
-      vim.notify("TraceBack security auto-render skipped: " .. (reason or "performance"), vim.log.levels.DEBUG)
+      -- route through lens notification helper
+      TB.lens_notify("TraceBack security auto-render skipped: " .. (reason or "performance"), vim.log.levels.DEBUG)
     end)
     return
   end
@@ -228,7 +230,7 @@ function M._perform_auto_render(bufnr, priority, event_type)
   if annotations and annotations > 0 then
     vim.schedule(function()
       if priority == 'high' and annotations >= 5 then
-        vim.notify(string.format("󰯳 TraceBack: %d security issues detected", annotations), vim.log.levels.WARN)
+        TB.lens_notify(string.format("󰯳 TraceBack: %d security issues detected", annotations), vim.log.levels.WARN)
       end
     end)
   end

@@ -2,25 +2,34 @@
 
 USAGE                                                        *traceback-usage*
 
-:TracebackTimeline           Open Telescope timeline picker
+:TracebackTimeline           Open timeline picker (Telescope / mini.pick / fallback)
+:TracebackHistory            Open combined history (TraceBack snapshots + Vim undo entries)
 :TracebackCapture            Force capture snapshot
 :TracebackRestore {idx}      Restore snapshot by index
 :TracebackReplay a b [ms]    Replay snapshots from a to b
+:TracebackReplayCancel       Cancel an ongoing replay
 :TracebackLenses             Render lenses now
-:TracebackLensesToggle {code|debug|security}
+:TracebackLensesToggle {code|lsp|security}
 
 CONFIG                                                       *traceback-config*
 
 >lua
 require('traceback').setup({
+  ui = { picker = 'auto' },
   snapshot = { max_snapshots = 200, throttle_ms = 500 },
-  lenses = { code = true, debug = true, security = true, auto_render = true, max_annotations = 200, scan_window = 400, treesitter = true },
-  telescope = true,
+  lenses = { code = true, lsp = true, security = true, auto_render = true, max_annotations = 200, scan_window = 400, treesitter = true },
+  telescope = { enabled = true },
 })
 <
 
 NOTES                                                        *traceback-notes*
 - Snapshots are in-memory and per-buffer.
 - Lenses are heuristic; Security lens is not a full static analyzer.
+ - Pickers: Telescope provides the richest UI (preview/diff). If Telescope is
+   unavailable, mini.pick (from mini.nvim) offers a lightweight picker. Without
+   either, a simple vim.ui.select fallback is used. Configure with
+   `ui.picker = 'auto'|'telescope'|'mini'`.
+ - Undo integration: Use :TracebackHistory to view both snapshots and undo
+   entries together. Selecting an undo entry performs `undo {seq}`.
  
 

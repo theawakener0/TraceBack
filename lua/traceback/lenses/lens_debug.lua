@@ -247,9 +247,11 @@ function M.populate_quickfix_with_captures(bufnr)
   if #qf_items > 0 then
     vim.fn.setqflist(qf_items, 'r')
     vim.cmd('copen')
-    vim.notify(string.format('󰌶 Added %d stack trace entries to quickfix', #qf_items), vim.log.levels.INFO)
+    local TB = require('traceback.utils')
+    TB.lens_notify(string.format('󰌶 Added %d stack trace entries to quickfix', #qf_items), vim.log.levels.INFO)
   else
-    vim.notify('󰌶 No stack trace entries found in current buffer', vim.log.levels.INFO)
+    local TB = require('traceback.utils')
+    TB.lens_notify('󰌶 No stack trace entries found in current buffer', vim.log.levels.INFO)
   end
 end
 

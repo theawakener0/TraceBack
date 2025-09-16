@@ -1,4 +1,5 @@
 local M = {}
+local U = require('traceback.utils')
 
 -- This module exposes a picker; we also register a proper telescope extension if loaded elsewhere.
 
@@ -31,7 +32,7 @@ end
 function M.timeline_picker()
   local ok, pickers = pcall(require, 'telescope.pickers')
   if not ok then
-    vim.notify('[traceback] Telescope not found', vim.log.levels.WARN)
+    -- telescope not available; silently return to avoid noisy notifications
     return
   end
   local finders = require('telescope.finders')
@@ -43,10 +44,17 @@ function M.timeline_picker()
   local cur_buf = vim.api.nvim_get_current_buf()
   local items = M.timeline_items(cur_buf)
   if #items == 0 then
-    vim.notify('󰗌 No snapshots available for current buffer', vim.log.levels.INFO)
+    -- no snapshots; keep quiet per notification policy
     return
   end
   
+  -- picker configuration can be customized via require('traceback').setup({ telescope = { theme = 'ivy', layout_config = {...} } })
+  local cfg = {}
+  pcall(function()
+    local init = require('traceback.init')
+    local c = init.get_config and init.get_config() or {}
+    cfg = type(c.telescope) == 'table' and c.telescope or {}
+  end)
   local themes = require('telescope.themes')
 
   -- Helper: choose the best buffer to restore into
@@ -68,12 +76,10 @@ function M.timeline_picker()
     return cur_buf
   end
 
-  pickers.new(themes.get_ivy({
-    -- Use ivy theme which handles large lists better
-    layout_config = {
-      height = 0.4,
-      preview_width = 0.6,
-    },
+  local theme = (cfg.theme == 'dropdown') and themes.get_dropdown or themes.get_ivy
+  local layout_config = cfg.layout_config or { height = 0.4, preview_width = 0.6 }
+  pickers.new(theme({
+    layout_config = layout_config,
   }), {
     prompt_title = '󰈙 TraceBack Timeline (' .. #items .. ' snapshots)',
     finder = finders.new_table {
@@ -114,11 +120,40 @@ function M.timeline_picker()
           local core = require('traceback.core')
           local restored_ok = core.restore(selection.value.idx, target_buf)
           if restored_ok then
-            vim.notify('󰒮 Restored snapshot #' .. selection.value.idx, vim.log.levels.INFO)
+            -- success: keep quiet per policy
           else
-            vim.notify('󰡼 Failed to restore snapshot #' .. selection.value.idx, vim.log.levels.ERROR)
+            U.notify('󰡼 Failed to restore snapshot #' .. selection.value.idx, vim.log.levels.ERROR)
           end
         end
+      end
+      local diff_with_current = function()
+        local selection = action_state.get_selected_entry()
+        if not selection then return end
+        local s = selection.value.snapshot
+        -- open a vertical diff: left = snapshot, right = current buffer
+        local snapshot_buf = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_lines(snapshot_buf, 0, -1, false, s.lines)
+        -- try to set filetype for better highlighting
+        pcall(function()
+          local ft = nil
+          if s.file and s.file ~= '' and vim.filetype and vim.filetype.match then
+            ft = vim.filetype.match({ filename = s.file })
+          end
+          ft = ft or vim.bo[cur_buf].filetype
+          if ft and ft ~= '' then vim.api.nvim_buf_set_option(snapshot_buf, 'filetype', ft) end
+        end)
+        -- open split and enable diff mode
+        vim.cmd('vsplit')
+        local right_win = vim.api.nvim_get_current_win()
+        local right_buf = cur_buf
+        vim.api.nvim_win_set_buf(right_win, right_buf)
+        vim.cmd('leftabove vsplit')
+        local left_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(left_win, snapshot_buf)
+        vim.cmd('wincmd l')
+        vim.cmd('diffthis')
+        vim.cmd('wincmd h')
+        vim.cmd('diffthis')
       end
       map('i', '<CR>', function()
         restore()
@@ -135,175 +170,119 @@ function M.timeline_picker()
       map('n', '<C-r>', function()
         restore()
       end)
+      -- Diff with current buffer
+      map('i', '<C-d>', function()
+        diff_with_current()
+      end)
+      map('n', 'd', function()
+        diff_with_current()
+      end)
       return true
     end,
   }):find()
 end
 
-function M.suggestions_picker()
+-- Simple lenses picker to quickly toggle lenses
+function M.lenses_picker()
   local ok, pickers = pcall(require, 'telescope.pickers')
-  if not ok then
-    vim.notify('[traceback] Telescope not found', vim.log.levels.WARN)
-    return
-  end
+  if not ok then return end
   local finders = require('telescope.finders')
   local conf = require('telescope.config').values
   local actions = require('telescope.actions')
   local action_state = require('telescope.actions.state')
-  local previewers = require('telescope.previewers')
-
-  -- Get suggestions for current buffer
-  local bufnr = vim.api.nvim_get_current_buf()
-  local suggestions_ok, suggestions_module = pcall(require, 'traceback.suggestions')
-  if not suggestions_ok then
-    vim.notify('󰧑 Suggestions module not available', vim.log.levels.ERROR)
-    return
-  end
-
-  local suggestions_result = suggestions_module.get_suggestions_for_buffer(bufnr)
-  if not suggestions_result or #suggestions_result == 0 then
-    vim.notify('󰧑 No improvement suggestions found for this buffer', vim.log.levels.INFO)
-    return
-  end
-
-  -- Format suggestions for picker
-  local items = {}
-  for i, suggestion in ipairs(suggestions_result) do
-    local confidence_text = string.format("%.0f%%", (suggestion.confidence or 0.5) * 100)
-    local severity_icon = suggestion.type == "security" and "󰌾" or 
-                         suggestion.type == "refactor" and "󰖷" or
-                         suggestion.type == "performance" and "󰓅" or "󰧑"
-    
-    local display = string.format("%s %s [%s confidence, %s impact]", 
-      severity_icon,
-      suggestion.title or "Unnamed suggestion",
-      confidence_text,
-      suggestion.impact or "unknown"
-    )
-    
-    table.insert(items, { 
-      display = display, 
-      ordinal = suggestion.title or ("suggestion_" .. i),
-      suggestion = suggestion,
-      idx = i 
-    })
-  end
-  
+  local lenses = require('traceback.lenses')
+  local state = {
+    code = true, lsp = true, security = true,
+  }
+  pcall(function()
+    -- crude read: render toggles live; we only need to know keys
+  end)
+  local entries = {
+    { key = 'code', label = '󰌵 Code lens' },
+    { key = 'lsp', label = '󰒡 LSP lens' },
+    { key = 'security', label = '󰌾 Security lens' },
+  }
+  for _, e in ipairs(entries) do e.display = e.label end
   pickers.new({}, {
-    prompt_title = '󰧑 TraceBack Buffer Suggestions (' .. #items .. ' found)',
+    prompt_title = '󰍉 TraceBack Lenses',
     finder = finders.new_table {
-      results = items,
-      entry_maker = function(e) 
-        return { 
-          value = e, 
-          display = e.display, 
-          ordinal = e.ordinal
-        } 
+      results = entries,
+      entry_maker = function(e)
+        return { value = e, display = e.display, ordinal = e.key }
       end,
     },
     sorter = conf.generic_sorter({}),
-    previewer = previewers.new_buffer_previewer({
-      define_preview = function(self, entry)
-        local suggestion = entry.value.suggestion
-        local preview_lines = {}
-        
-        -- Title and basic info
-        table.insert(preview_lines, "# " .. (suggestion.title or "Suggestion"))
-        table.insert(preview_lines, "")
-        table.insert(preview_lines, "**Type:** " .. (suggestion.type or "unknown"))
-        if suggestion.confidence then
-          table.insert(preview_lines, "**Confidence:** " .. string.format("%.1f%%", suggestion.confidence * 100))
-        end
-        if suggestion.impact then
-          table.insert(preview_lines, "**Impact:** " .. suggestion.impact)
-        end
-        table.insert(preview_lines, "")
-        
-        -- Description
-        if suggestion.description then
-          table.insert(preview_lines, "## Description")
-          table.insert(preview_lines, suggestion.description)
-          table.insert(preview_lines, "")
-        end
-        
-        -- Suggestion details
-        if suggestion.suggestion then
-          table.insert(preview_lines, "## Suggestion")
-          table.insert(preview_lines, suggestion.suggestion)
-          table.insert(preview_lines, "")
-        end
-        
-        -- Code location
-        if suggestion.range then
-          local start_line = suggestion.range.start and suggestion.range.start[1] or 1
-          local end_line = suggestion.range["end"] and suggestion.range["end"][1] or start_line
-          table.insert(preview_lines, "## Location")
-          table.insert(preview_lines, string.format("Lines %d-%d", start_line, end_line))
-          table.insert(preview_lines, "")
-        end
-        
-        -- Replacement code if available
-        if suggestion.replacement then
-          table.insert(preview_lines, "## Suggested Replacement")
-          table.insert(preview_lines, "```" .. (vim.bo[bufnr].filetype or ""))
-          table.insert(preview_lines, suggestion.replacement)
-          table.insert(preview_lines, "```")
-          table.insert(preview_lines, "")
-        end
-        
-        -- CWE or security info
-        if suggestion.cwe then
-          table.insert(preview_lines, "## Security Reference")
-          table.insert(preview_lines, suggestion.cwe)
-          table.insert(preview_lines, "")
-        end
-        
-        vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, preview_lines)
-        vim.api.nvim_buf_set_option(self.state.bufnr, 'filetype', 'markdown')
-      end,
-    }),
     attach_mappings = function(prompt_bufnr, map)
-      local apply_suggestion = function()
+      local toggle = function()
         local selection = action_state.get_selected_entry()
-        if selection then
-          local suggestion = selection.value.suggestion
-          -- Convert to annotation format and show actions
-          local actions_module = require('traceback.actions')
-          local annotation = {
-            id = "suggestion_picker_" .. selection.value.idx,
-            type = "suggestion",
-            title = suggestion.title,
-            message = actions_module._format_suggestion_message(suggestion),
-            range = suggestion.range,
-            severity = actions_module._suggestion_severity(suggestion),
-            suggestion_data = suggestion,
-            actions = actions_module._get_suggestion_actions(suggestion)
-          }
-          actions.close(prompt_bufnr)
-          actions_module.show_actions_for_annotation(annotation)
+        if not selection then return end
+        vim.cmd('TracebackLensesToggle ' .. selection.value.key)
+      end
+      map('i', '<CR>', function() toggle() end)
+      map('n', '<CR>', function() toggle() end)
+      map('n', 't', function() toggle() end)
+      return true
+    end,
+  }):find()
+end
+
+-- Combined History picker (TraceBack snapshots + Vim undo tree entries)
+function M.history_picker()
+  local ok, pickers = pcall(require, 'telescope.pickers')
+  if not ok then return end
+  local finders = require('telescope.finders')
+  local conf = require('telescope.config').values
+  local actions = require('telescope.actions')
+  local action_state = require('telescope.actions.state')
+  local themes = require('telescope.themes')
+
+  local cur_buf = vim.api.nvim_get_current_buf()
+  local tb_items = M.timeline_items(cur_buf)
+  local undo = require('traceback.undo')
+  local undo_entries = undo.entries(cur_buf)
+
+  local items = {}
+  for _, e in ipairs(tb_items) do
+    table.insert(items, { kind = 'snapshot', display = e.display, ordinal = 'S' .. tostring(e.idx), idx = e.idx, snapshot = e.snapshot })
+  end
+  for _, u in ipairs(undo_entries) do
+    local disp = undo.format_entry(u)
+    table.insert(items, { kind = 'undo', display = disp, ordinal = 'U' .. tostring(u.seq), seq = u.seq, entry = u })
+  end
+
+  if #items == 0 then return end
+
+  -- config
+  local cfg = {}
+  pcall(function()
+    local init = require('traceback.init')
+    local c = init.get_config and init.get_config() or {}
+    cfg = type(c.telescope) == 'table' and c.telescope or {}
+  end)
+  local theme = (cfg.theme == 'dropdown') and themes.get_dropdown or themes.get_ivy
+  local layout_config = cfg.layout_config or { height = 0.5 }
+
+  pickers.new(theme({ layout_config = layout_config }), {
+    prompt_title = '󰔚 TraceBack History (Snapshots + Undo)',
+    finder = finders.new_table {
+      results = items,
+      entry_maker = function(e) return { value = e, display = e.display, ordinal = e.ordinal } end,
+    },
+    sorter = conf.generic_sorter({}),
+    attach_mappings = function(prompt_bufnr, map)
+      local act = function()
+        local selection = action_state.get_selected_entry()
+        if not selection then return end
+        local v = selection.value
+        if v.kind == 'snapshot' then
+          local ok_restore = require('traceback.core').restore(v.idx)
+          if not ok_restore then U.notify('Failed to restore snapshot #' .. tostring(v.idx), vim.log.levels.ERROR) end
+        elseif v.kind == 'undo' then
+          require('traceback.undo').goto_seq(v.seq)
         end
       end
-      
-      map('i', '<CR>', apply_suggestion)
-      map('n', '<CR>', apply_suggestion)
-      
-      -- Quick apply fix mapping
-      map('i', '<C-a>', function()
-        local selection = action_state.get_selected_entry()
-        if selection and selection.value.suggestion.replacement then
-          local suggestion = selection.value.suggestion
-          local range = suggestion.range
-          if range then
-            vim.api.nvim_buf_set_text(bufnr,
-              range.start[1] - 1, range.start[2] or 0,
-              range["end"][1] - 1, range["end"][2] or -1,
-              vim.split(suggestion.replacement, '\n'))
-            vim.notify("󰁨 Applied suggestion: " .. suggestion.title, vim.log.levels.INFO)
-          end
-        end
-        actions.close(prompt_bufnr)
-      end)
-      
+      map('i', '<CR>', function() act(); actions.close(prompt_bufnr) end)
+      map('n', '<CR>', function() act(); actions.close(prompt_bufnr) end)
       return true
     end,
   }):find()

@@ -3,6 +3,7 @@ local M = {}
 local timelines = {}
 local augroup = vim.api.nvim_create_augroup('TracebackCore', { clear = true })
 local buf_keys = {}
+local _replay = { active = false, timer = nil, bufnr = nil }
 
 -- persistent storage file under ('/traceback/snapshots.json')
 local function state_file()
@@ -265,11 +266,19 @@ local function replay(bufnr, from_idx, to_idx, delay_ms)
   local win = vim.api.nvim_get_current_win()
   local count = #snaps
   local idx = 1
+  if _replay.active then
+    pcall(function()
+      if _replay.timer then _replay.timer:stop(); _replay.timer:close() end
+    end)
+    _replay = { active = false, timer = nil, bufnr = nil }
+  end
   local timer = vim.loop.new_timer()
+  _replay = { active = true, timer = timer, bufnr = bufnr }
 
   timer:start(0, delay_ms, vim.schedule_wrap(function()
     if idx > count then
       pcall(function() timer:stop(); timer:close() end)
+      _replay = { active = false, timer = nil, bufnr = nil }
       return
     end
 
@@ -448,6 +457,7 @@ function M.setup(cfg)
     group = augroup,
     callback = function(args)
       local bufnr = args.buf
+      if _replay.active and _replay.bufnr == bufnr then return end
       local tl = get_timeline(bufnr)
       local now = now_ms()
       if now - tl.last_capture >= cfg.snapshot.throttle_ms then
@@ -455,6 +465,8 @@ function M.setup(cfg)
       end
     end,
   })
+
+  -- Note: undo/redo will trigger TextChanged, so snapshot capture above covers it
 
   -- handle renames/saves: migrate timeline
   vim.api.nvim_create_autocmd({ 'BufFilePost'}, {
@@ -541,6 +553,15 @@ end
 function M.replay(from_idx, to_idx, delay_ms, bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   return replay(bufnr, from_idx, to_idx, delay_ms)
+end
+
+function M.replay_cancel()
+  if _replay.active and _replay.timer then
+    pcall(function()
+      _replay.timer:stop(); _replay.timer:close()
+    end)
+  end
+  _replay = { active = false, timer = nil, bufnr = nil }
 end
 
 return M
