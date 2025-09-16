@@ -239,15 +239,22 @@ function M.history_picker()
   local cur_buf = vim.api.nvim_get_current_buf()
   local tb_items = M.timeline_items(cur_buf)
   local undo = require('traceback.undo')
-  local undo_entries = undo.entries(cur_buf)
+  local undo_entries = undo.tree_items(cur_buf)
 
   local items = {}
-  for _, e in ipairs(tb_items) do
-    table.insert(items, { kind = 'snapshot', display = e.display, ordinal = 'S' .. tostring(e.idx), idx = e.idx, snapshot = e.snapshot })
+  local snap_count = #tb_items
+  local undo_count = #undo_entries
+  if snap_count > 0 then
+    table.insert(items, { kind = 'header', display = string.format('󰈙 Snapshots (%d)', snap_count), ordinal = '0-S' })
+    for _, e in ipairs(tb_items) do
+      table.insert(items, { kind = 'snapshot', display = '   ' .. e.display, ordinal = 'S' .. tostring(e.idx), idx = e.idx, snapshot = e.snapshot })
+    end
   end
-  for _, u in ipairs(undo_entries) do
-    local disp = undo.format_entry(u)
-    table.insert(items, { kind = 'undo', display = disp, ordinal = 'U' .. tostring(u.seq), seq = u.seq, entry = u })
+  if undo_count > 0 then
+    table.insert(items, { kind = 'header', display = string.format(' Undo entries (%d)', undo_count), ordinal = '0-U' })
+    for _, u in ipairs(undo_entries) do
+      table.insert(items, { kind = 'undo', display = '  ↩ ' .. u.display, ordinal = 'U' .. tostring(u.seq), seq = u.seq, entry = u.entry })
+    end
   end
 
   if #items == 0 then return end
@@ -272,7 +279,7 @@ function M.history_picker()
     attach_mappings = function(prompt_bufnr, map)
       local act = function()
         local selection = action_state.get_selected_entry()
-        if not selection then return end
+        if not selection or (selection.value.kind == 'header') then return end
         local v = selection.value
         if v.kind == 'snapshot' then
           local ok_restore = require('traceback.core').restore(v.idx)
@@ -281,8 +288,126 @@ function M.history_picker()
           require('traceback.undo').goto_seq(v.seq)
         end
       end
+      local diff_with_current = function()
+        local selection = action_state.get_selected_entry()
+        if not selection or selection.value.kind ~= 'undo' then return end
+        local seq = selection.value.seq
+        local cur_buf = vim.api.nvim_get_current_buf()
+        local snapshot_buf = vim.api.nvim_create_buf(false, true)
+        local core = require('traceback.core')
+        core.with_capture_suppressed(function()
+          local ut = vim.fn.undotree()
+          local cur_seq = ut and ut.seq_cur
+          vim.cmd('silent keepjumps undo ' .. tostring(seq))
+          local lines = vim.api.nvim_buf_get_lines(cur_buf, 0, -1, false)
+          if cur_seq then pcall(vim.cmd, 'silent keepjumps undo ' .. tostring(cur_seq)) end
+          vim.api.nvim_buf_set_lines(snapshot_buf, 0, -1, false, lines)
+          pcall(function()
+            local ft = vim.bo[cur_buf].filetype
+            if ft and ft ~= '' then vim.api.nvim_buf_set_option(snapshot_buf, 'filetype', ft) end
+          end)
+        end)
+        vim.cmd('vsplit')
+        local right_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(right_win, cur_buf)
+        vim.cmd('leftabove vsplit')
+        local left_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(left_win, snapshot_buf)
+        vim.cmd('wincmd l')
+        vim.cmd('diffthis')
+        vim.cmd('wincmd h')
+        vim.cmd('diffthis')
+      end
       map('i', '<CR>', function() act(); actions.close(prompt_bufnr) end)
       map('n', '<CR>', function() act(); actions.close(prompt_bufnr) end)
+      map('i', '<C-d>', function() diff_with_current() end)
+      map('n', 'd', function() diff_with_current() end)
+      return true
+    end,
+  }):find()
+end
+
+-- Undo-only picker
+function M.undo_picker()
+  local ok, pickers = pcall(require, 'telescope.pickers')
+  if not ok then return end
+  local finders = require('telescope.finders')
+  local conf = require('telescope.config').values
+  local actions = require('telescope.actions')
+  local action_state = require('telescope.actions.state')
+  local themes = require('telescope.themes')
+
+  local cur_buf = vim.api.nvim_get_current_buf()
+  local undo = require('traceback.undo')
+  local ulist = undo.tree_items(cur_buf)
+  if #ulist == 0 then return end
+  local items = {}
+  for _, u in ipairs(ulist) do
+    table.insert(items, { kind = 'undo', display = u.display, ordinal = tostring(u.seq), seq = u.seq, entry = u.entry })
+  end
+
+  local cfg = {}
+  pcall(function()
+    local init = require('traceback.init')
+    local c = init.get_config and init.get_config() or {}
+    cfg = type(c.telescope) == 'table' and c.telescope or {}
+  end)
+  local theme = (cfg.theme == 'dropdown') and themes.get_dropdown or themes.get_ivy
+  local layout_config = cfg.layout_config or { height = 0.4 }
+
+  pickers.new(theme({ layout_config = layout_config }), {
+    prompt_title = ' Vim Undo Tree',
+    finder = finders.new_table({
+      results = items,
+      entry_maker = function(e) return { value = e, display = e.display, ordinal = e.ordinal } end,
+    }),
+    sorter = conf.generic_sorter({}),
+    attach_mappings = function(prompt_bufnr, map)
+      local act = function()
+        local selection = action_state.get_selected_entry()
+        if not selection then return end
+        require('traceback.undo').goto_seq(selection.value.seq)
+      end
+      local diff_with_current = function()
+        local selection = action_state.get_selected_entry()
+        if not selection then return end
+        local seq = selection.value.seq
+        local cur_buf = vim.api.nvim_get_current_buf()
+        -- create a scratch with the contents of the buffer at the selected seq
+        local snapshot_buf = vim.api.nvim_create_buf(false, true)
+        local core = require('traceback.core')
+        core.with_capture_suppressed(function()
+          -- save current seq
+          local ut = vim.fn.undotree()
+          local cur_seq = ut and ut.seq_cur
+          -- jump to seq and capture lines
+          vim.cmd('silent keepjumps undo ' .. tostring(seq))
+          local lines = vim.api.nvim_buf_get_lines(cur_buf, 0, -1, false)
+          -- restore previous seq
+          if cur_seq then pcall(vim.cmd, 'silent keepjumps undo ' .. tostring(cur_seq)) end
+          -- write to scratch and set ft
+          vim.api.nvim_buf_set_lines(snapshot_buf, 0, -1, false, lines)
+          pcall(function()
+            local ft = vim.bo[cur_buf].filetype
+            if ft and ft ~= '' then vim.api.nvim_buf_set_option(snapshot_buf, 'filetype', ft) end
+          end)
+        end)
+        -- open vertical diff: left = undo state, right = current buffer
+        vim.cmd('vsplit')
+        local right_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(right_win, cur_buf)
+        vim.cmd('leftabove vsplit')
+        local left_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(left_win, snapshot_buf)
+        vim.cmd('wincmd l')
+        vim.cmd('diffthis')
+        vim.cmd('wincmd h')
+        vim.cmd('diffthis')
+      end
+      map('i', '<CR>', function() act(); actions.close(prompt_bufnr) end)
+      map('n', '<CR>', function() act(); actions.close(prompt_bufnr) end)
+      map('i', '<C-d>', function() diff_with_current() end)
+      map('n', 'd', function() diff_with_current() end)
       return true
     end,
   }):find()

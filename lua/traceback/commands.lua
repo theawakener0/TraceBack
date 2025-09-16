@@ -20,6 +20,12 @@ function M.setup(keymaps)
     desc = " 󰍉 Toggle TraceBack lenses (code | lsp | security)"
   })
 
+  vim.api.nvim_create_user_command('TracebackUndo', function()
+    require('traceback.ui').undo_picker()
+  end, {
+    desc = "  Open Vim undo tree browser"
+  })
+
   vim.api.nvim_create_user_command('TracebackCapture', function()
     require('traceback.core').capture()
   end, { 
@@ -182,6 +188,9 @@ function M.setup(keymaps)
   map(keymaps.restore, function() vim.cmd('TracebackRestore 1') end, "TraceBack: Restore latest snapshot")
   map(keymaps.replay, function() vim.cmd('TracebackReplay 1 2 100') end, "TraceBack: Replay snapshots")
   map(keymaps.toggle_security, function() vim.cmd('TracebackLensesToggle security') end, "TraceBack: Toggle security lens")
+  if keymaps.undo then
+    map(keymaps.undo, function() vim.cmd('TracebackUndo') end, "TraceBack: Undo tree browser")
+  end
   -- Actions/suggestions keymaps removed
 end
 

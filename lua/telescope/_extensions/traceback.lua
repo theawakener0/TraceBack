@@ -5,5 +5,6 @@ return require('telescope').register_extension({
     timeline = tb_telescope.timeline_picker,
     lenses = tb_telescope.lenses_picker,
     history = tb_telescope.history_picker,
+    undo = tb_telescope.undo_picker,
   },
 })

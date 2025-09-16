@@ -45,6 +45,7 @@ local config = {
   keymaps = {
     timeline = '<Leader>tt',    -- open timeline picker
     history = '<Leader>th',     -- open combined history (timeline + undo)
+    undo = '<Leader>tu',        -- open undo tree only
     capture = '<Leader>tc',     -- force capture
     restore = '<Leader>tr',     -- restore last snapshot (or use :TracebackRestore {idx})
     replay = '<Leader>tp',      -- replay snapshots

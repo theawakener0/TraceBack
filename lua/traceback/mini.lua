@@ -74,4 +74,23 @@ function M.history_picker()
   )
 end
 
+function M.undo_picker()
+  local pick = ensure_mini()
+  if not pick then return end
+  local cur_buf = vim.api.nvim_get_current_buf()
+  local undo = require('traceback.undo')
+  local ulist = undo.tree_items(cur_buf)
+  if #ulist == 0 then return end
+  local items = {}
+  for _, u in ipairs(ulist) do table.insert(items, { kind = 'undo', display = u.display, seq = u.seq }) end
+  pick.pick(
+    items,
+    { prompt = 'Vim Undo Tree', format_item = function(e) return e.display end },
+    function(item)
+      if not item then return end
+      require('traceback.undo').goto_seq(item.seq)
+    end
+  )
+end
+
 return M

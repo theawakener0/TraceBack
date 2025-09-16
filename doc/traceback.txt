@@ -4,6 +4,7 @@ USAGE                                                        *traceback-usage*
 
 :TracebackTimeline           Open timeline picker (Telescope / mini.pick / fallback)
 :TracebackHistory            Open combined history (TraceBack snapshots + Vim undo entries)
+:TracebackUndo               Open Vim undo tree browser
 :TracebackCapture            Force capture snapshot
 :TracebackRestore {idx}      Restore snapshot by index
 :TracebackReplay a b [ms]    Replay snapshots from a to b
@@ -30,6 +31,10 @@ NOTES                                                        *traceback-notes*
    either, a simple vim.ui.select fallback is used. Configure with
    `ui.picker = 'auto'|'telescope'|'mini'`.
  - Undo integration: Use :TracebackHistory to view both snapshots and undo
-   entries together. Selecting an undo entry performs `undo {seq}`.
+   entries together. Entries are grouped with headers. Selecting an undo entry
+   performs `undo {seq}`.
+  - Undo browser: :TracebackUndo shows a tree-style view. Configure style via
+    `ui.undo_tree.style = 'unicode'|'ascii'`. Relative time/depth badges can be
+    toggled with `ui.undo_tree.relative` and `ui.undo_tree.show_depth`.
  
 

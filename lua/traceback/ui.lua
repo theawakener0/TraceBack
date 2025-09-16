@@ -68,6 +68,29 @@ function M.lenses_picker()
   end)
 end
 
+function M.undo_picker()
+  local cfg = get_cfg()
+  local pref = (cfg.ui and cfg.ui.picker) or 'auto'
+  if pref == 'telescope' or (pref == 'auto' and has_telescope()) then
+    local ok, tb_tel = pcall(require, 'traceback.telescope')
+    if ok and tb_tel.undo_picker then return tb_tel.undo_picker() end
+  end
+  if pref == 'mini' or (pref == 'auto' and has_mini_pick()) then
+    local ok, tb_mini = pcall(require, 'traceback.mini')
+    if ok and tb_mini.undo_picker then return tb_mini.undo_picker() end
+  end
+  -- Fallback: simple list
+  local cur_buf = vim.api.nvim_get_current_buf()
+  local undo = require('traceback.undo')
+  local entries = undo.entries(cur_buf)
+  if #entries == 0 then return end
+  local items = {}
+  for _, e in ipairs(entries) do table.insert(items, { display = undo.format_entry(e), seq = e.seq }) end
+  fallback_select(items, function(entry)
+    require('traceback.undo').goto_seq(entry.seq)
+  end)
+end
+
 -- Combined history picker: shows TraceBack snapshots and Vim undo entries
 function M.history_picker()
   local cfg = get_cfg()

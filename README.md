@@ -73,8 +73,9 @@ end)
 All commands include descriptive help text with visual icons:
 
 - 📜 `:TracebackTimeline` – Open timeline picker (Telescope, mini.pick, or fallback)
-- �️ `:TracebackHistory` – Open a combined view (TraceBack snapshots + Vim undo entries)
-- �📸 `:TracebackCapture` – Force capture current buffer state  
+- 🕰️ `:TracebackHistory` – Open a combined view (TraceBack snapshots + Vim undo entries)
+-  `:TracebackCapture` – Force capture current buffer state  
+-  `:TracebackUndo` – Open undo-only tree browser
 - ⏪ `:TracebackRestore {idx}` – Restore buffer to snapshot index (supports tab completion)
 - ▶️ `:TracebackReplay {from} {to} {delay_ms}` – Replay snapshot sequence with animation
 - ⏹️ `:TracebackReplayCancel` – Cancel an ongoing replay
@@ -91,6 +92,7 @@ Default keymaps (can be overridden via setup):
 
 - `<Leader>tt` — 🔭 Open timeline picker
 - `<Leader>th` — 🕰️ Open combined History picker (snapshots + undo)
+- `<Leader>tu` —  Open undo-only tree browser
 - `<Leader>tc` — 📸 Force capture
 - `<Leader>tr` — ⏪ Restore last snapshot (maps to `:TracebackRestore 1`)
 - `<Leader>tp` — ▶️ Replay a short range (maps to `:TracebackReplay 1 2 100`)
@@ -104,7 +106,9 @@ UI backends are chosen automatically:
 Telescope details:
 - Timeline: live preview, newest-first ordering, and quick restore.
 - Diff mapping: in the timeline picker, `<C-d>` (insert) or `d` (normal) opens a vertical diff vs current buffer.
-- Lenses picker: `:Telescope traceback lenses` or `:TracebackLenses`.
+ - Lenses picker: `:Telescope traceback lenses` or `:TracebackLenses`.
+ - Undo tree: `:Telescope traceback undo` or `:TracebackUndo`.
+ - In History/Undo pickers: use `<C-d>` (insert) or `d` (normal) on an undo entry to diff that undo state vs current buffer.
 
 ## User Interface
 
@@ -210,6 +214,12 @@ require('traceback').setup({
   ui = {
     -- Picker backend: 'auto' (default) | 'telescope' | 'mini'
     picker = 'auto',
+    -- Undo tree rendering (history/undo pickers): 'unicode' (default) or 'ascii'
+    undo_tree = {
+      style = 'unicode',   -- 'unicode' | 'ascii' connectors
+      relative = true,     -- show relative time (e.g., 2m ago)
+      show_depth = false,  -- show branch depth badge like [d:2]
+    },
   },
 
   -- Snapshot timeline
@@ -257,6 +267,7 @@ require('traceback').setup({
   keymaps = {
     timeline = '<Leader>tt',
     history = '<Leader>th',
+    undo = '<Leader>tu',
     capture = '<Leader>tc',
     restore = '<Leader>tr',
     replay = '<Leader>tp',

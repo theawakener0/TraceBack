@@ -4,6 +4,7 @@ local timelines = {}
 local augroup = vim.api.nvim_create_augroup('TracebackCore', { clear = true })
 local buf_keys = {}
 local _replay = { active = false, timer = nil, bufnr = nil }
+local _suppress = 0
 
 -- persistent storage file under ('/traceback/snapshots.json')
 local function state_file()
@@ -458,6 +459,7 @@ function M.setup(cfg)
     callback = function(args)
       local bufnr = args.buf
       if _replay.active and _replay.bufnr == bufnr then return end
+      if _suppress > 0 then return end
       local tl = get_timeline(bufnr)
       local now = now_ms()
       if now - tl.last_capture >= cfg.snapshot.throttle_ms then
@@ -562,6 +564,15 @@ function M.replay_cancel()
     end)
   end
   _replay = { active = false, timer = nil, bufnr = nil }
+end
+
+-- Suppress automatic snapshot captures while executing fn
+function M.with_capture_suppressed(fn)
+  _suppress = _suppress + 1
+  local ok, res, err = pcall(fn)
+  _suppress = math.max(0, _suppress - 1)
+  if not ok then return nil, res end
+  return res
 end
 
 return M
